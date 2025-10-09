@@ -11,12 +11,8 @@ import os
 import sys
 import logging
 
+logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    level='ERROR',
-    format='%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
 
 CSV_FILE = 'input.csv'
 HTML_FILE = 'report_no_pandas.html'
@@ -180,22 +176,22 @@ render();
 
 
 def switch_csv2html(csv_file, html_file, test_time):
-    logging.info(
+    logger.info(
         f"\n\nswitch_csv2html: csv:{csv_file} \nhtml:{html_file} \ntest_time:{test_time}\n\n"
     )
     if not os.path.isfile(csv_file):
-        logging.info(f"❌  {csv_file} not found")
+        logger.info(f"❌  {csv_file} not found")
         sys.exit(1)
     with open(csv_file, newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         rows = list(reader)
     if not rows:
-        logging.info("❌  CSV is empty")
+        logger.info("❌  CSV is empty")
         sys.exit(1)
     with open(html_file, 'w', encoding='utf-8') as f:
         f.write(build_html(rows, test_time))
 
-    logging.info(f"✅  Generated {html_file}  ({len(rows)} rows)")
+    logger.info(f"✅  Generated {html_file}  ({len(rows)} rows)")
 
 
 def initHtmlDir(dir_path):

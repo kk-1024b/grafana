@@ -9,16 +9,13 @@ import csv
 import csv2html
 import logging
 
-logging.basicConfig(
-    level='ERROR',
-    format='%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
+logger = logging.getLogger(__name__)
+
 CATCH2_TABLE = Path('/data/catch2Result.csv')
 
 
 def getTestResult(file):
-    logging.info(f"getTestResult file: {file}")
+    logger.info(f"getTestResult file: {file}")
     tm = pathlib.Path(file).parent.name
 
     src = file
@@ -31,14 +28,14 @@ def getTestResult(file):
         header = next(reader)  # 首行当表头
 
         for row in reader:  # row 是 list
-            logging.debug(row)
+            logger.debug(row)
 
             if row:
                 totalNum += 1
                 if "pass" == row[-1]:
                     passNum += 1
 
-    logging.info(f"{tm}, {passNum}, {totalNum}")
+    logger.info(f"{tm}, {passNum}, {totalNum}")
     return tm, passNum, totalNum
 
 
@@ -52,7 +49,7 @@ def switchTime(tm):
     '''switch 2025-09-22_04-03-23 to 2025-09-22 04:03:23'''
     parts = tm.replace('_', ' ').rsplit('-', 2)  # ['2025-09-22 ', '04', '03', '23']
     new_tm = f"{parts[0]}:{':'.join(parts[1:])}"
-    logging.info(f"{tm}, {new_tm}")  # 2025-09-22 04:03:23
+    logger.info(f"{tm}, {new_tm}")  # 2025-09-22 04:03:23
     return new_tm
 
 
@@ -73,9 +70,9 @@ def initCatch2Table(watchDir):
 
                 oneRec = f"{ftm},{passNum},{totalNum}\n"
                 csv_f.write(oneRec)
-                logging.debug(f"save {oneRec}")
+                logger.debug(f"save {oneRec}")
 
-                logging.info("switch_csv2html start")
+                logger.info("switch_csv2html start")
                 html_file = f"/data/details/html/report-{ftm}.html"
                 csv2html.switch_csv2html(f, html_file, ftm)
 

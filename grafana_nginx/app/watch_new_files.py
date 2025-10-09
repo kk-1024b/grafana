@@ -12,6 +12,9 @@ import resultSum
 import csv2html
 import logging
 
+
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(
     level='INFO',
     format='%(asctime)s | %(levelname)-8s | %(filename)s:%(lineno)d | %(message)s',
@@ -24,13 +27,13 @@ HTML_DIR = "/data/details/html"
 
 
 def readNewFile(f):
-    logging.info(f)
+    logger.info(f)
     ftm, passNum, totalNum = resultSum.getTestResult(f)
     ftm = resultSum.switchTime(ftm)
     resultSum.insertOneResult(ftm, passNum, totalNum)
 
     #
-    logging.debug("csv2html.switch_csv2html")
+    logger.debug("csv2html.switch_csv2html")
     html_file = f"{HTML_DIR}/report-{ftm}.html"
     csv2html.switch_csv2html(f, html_file, ftm)
     return
