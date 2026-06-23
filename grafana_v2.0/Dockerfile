@@ -18,13 +18,13 @@ RUN curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyri
     && rm -rf /var/lib/apt/lists/*
 
 # Install Infinity datasource plugin
-RUN grafana cli --pluginsDir /var/lib/grafana/plugins plugins install yesoreyeram-infinity-datasource
+RUN grafana cli --pluginsDir /var/lib/grafana/plugins plugins install frser-sqlite-datasource
 
 # Generate nginx Basic Auth (user:pass123)
 RUN htpasswd -cb /etc/nginx/.htpasswd user pass123
 
 # Bake in Python watcher scripts
-COPY app/ /app/
+COPY app_2.0/ /app/
 
 # nginx and supervisord configs
 COPY conf/nginx.conf /etc/nginx/sites-available/default

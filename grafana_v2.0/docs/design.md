@@ -311,7 +311,39 @@ supervisord 解决了以上全部问题，且配置直观。
 
 ---
 
-## 7. 限制与已知问题
+## 7. app_2.0：SQLite 版本变更（v2）
+
+在 `app/`（CSV 版本）基础上，新增 `app_2.0/` 目录实现 SQLite 存储，两个版本并存，通过 Dockerfile 的 `COPY` 目标切换。
+
+**主要变化：**
+
+| 项目 | app/（CSV） | app_2.0/（SQLite） |
+|------|------------|-------------------|
+| 存储 | `catch2Result.csv` + HTML 文件 | `test_results.db`（SQLite） |
+| Grafana 插件 | `yesoreyeram-infinity-datasource` | `frser-sqlite-datasource` |
+| HTML 报告 | 生成 `/data/details/html/*.html` | 废弃，由 Grafana 面板替代 |
+| nginx GET | 需要 `/data/` 静态路径 | 移除，Grafana 直接读文件 |
+
+**新增模块 `db.py`：**
+
+```python
+init_db(db_path)          # 建表，返回连接
+insert_run(conn, ...)     # 写 runs 表，返回 run_id
+insert_test_cases(conn, run_id, rows)  # 批量写明细
+```
+
+**Schema：**
+
+```sql
+runs(id, time TEXT, pass INTEGER, total INTEGER)
+test_cases(id, run_id → runs.id, num, module, binary, case_name, result)
+```
+
+**切换回 CSV 版本：** 修改 Dockerfile 两行（`COPY app/` + Infinity 插件）并恢复 `nginx.conf` 的 `/data/` GET location。
+
+---
+
+## 8. 限制与已知问题
 
 1. **Grafana dashboard 不持久化**：`/var/lib/grafana` 未挂载，容器删除后 dashboard 配置丢失。首次启动后需手动配置 Infinity 数据源和 dashboard，或额外挂载该目录。
 

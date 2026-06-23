@@ -1,64 +1,92 @@
-# app/ 模块说明
+# app/ 与 app_2.0/ 模块说明
 
-`app/` 下三个文件协同完成一件事：把 CI 上传的测试结果 CSV，转化为 Grafana 可读的汇总数据 + 可交互的 HTML 报告。
+本项目有两个版本的 Python watcher：
+
+| 版本 | 存储方式 | Grafana 插件 | HTML 报告 |
+|------|---------|-------------|----------|
+| `app/` | CSV 文件 | Infinity | 有 |
+| `app_2.0/` | SQLite 数据库 | frser-sqlite-datasource | 无 |
+
+Dockerfile 通过 `COPY app/ /app/` 或 `COPY app_2.0/ /app/` 切换版本。
 
 ---
 
-## watch_new_files.py — 主入口（文件监听器）
+## app/ — CSV 版本
+
+三个文件协同完成：把 CI 上传的测试结果 CSV，转化为 Grafana 可读的汇总 CSV + 可交互的 HTML 报告。
+
+### watch_new_files.py — 主入口
 
 轮询 `/data/details/sources/` 目录，每 2 秒扫描一次，发现新文件就触发处理。
 
-启动时做两件事：
-1. 清空 `/data/details/html/`（删除旧报告）
-2. 扫描 `sources/` 下所有已有文件，重建汇总 CSV 和 HTML（保证重启后数据一致）
+启动时：清空 `/data/details/html/`，扫描已有文件重建汇总 CSV 和 HTML。
 
-之后进入无限循环，每次 diff（当前文件集 - 已知文件集）= 新文件，逐个处理。
+### resultSum.py — CSV 解析 + 汇总写入
 
----
+- `getTestResult(file)`：统计 `result == 'pass'` 的行数，时间戳从父目录名提取
+- `insertOneResult(tm, passNum, totalNum)`：追加一行到 `/data/catch2Result.csv`
+- `switchTime(tm)`：`2026-06-23_10-00-00` → `2026-06-23 10:00:00`
 
-## resultSum.py — CSV 解析 + 汇总写入
+### csv2html.py — HTML 报告生成器
 
-两个核心职责：
-
-**1. 解析单次结果（`getTestResult`）**
-
-读取 `testResult.csv`，逐行统计 `result` 列为 `pass` 的数量，返回 `(时间戳, pass数, total数)`。时间戳从文件的**父目录名**提取（如 `2026-06-23_10-00-00`）。
-
-**2. 写入汇总（`insertOneResult`）**
-
-把一行追加到 `/data/catch2Result.csv`，这个文件是 Grafana 趋势图的数据源：
+将 `testResult.csv` 渲染为自包含 HTML，支持列排序、分页、全局搜索、pass/fail 高亮。
 
 ```
-2026-06-23 10:00:00,38,40
-```
-
-**时间戳格式转换（`switchTime`）：**
-
-```
-目录名  2026-06-23_10-00-00
-           ↓
-CSV值   2026-06-23 10:00:00
+watch_new_files.py
+    ├── resultSum.py   → catch2Result.csv
+    └── csv2html.py    → report-{timestamp}.html
 ```
 
 ---
 
-## csv2html.py — HTML 报告生成器
+## app_2.0/ — SQLite 版本
 
-把单次 `testResult.csv` 渲染成自包含的交互式 HTML（无外部依赖，纯标准库）：
+废弃 HTML 报告，数据写入 SQLite，Grafana 直接查询数据库。
 
-- 列排序（点表头升/降/清除）
-- 分页（10/20/30/50 行可选）
-- 全局关键字搜索（实时过滤所有列）
-- `pass` 显示绿色，`failed`/`timeout` 显示红色
+### db.py — 数据库层
 
-输出到 `/data/details/html/report-{时间戳}.html`，可通过 nginx 直接访问。
+- `init_db(db_path='/data/test_results.db')` — 建表并返回连接
+- `insert_run(conn, time, pass_, total) → run_id`
+- `insert_test_cases(conn, run_id, rows)` — 批量插入明细
+
+**Schema：**
+```sql
+runs(id, time, pass, total)
+test_cases(id, run_id, num, module, binary, case_name, result)
+```
+
+`test_cases.run_id` 外键关联 `runs.id`，通过 JOIN 查询某次运行的明细。
+
+### resultSum.py — CSV 解析 + 写库
+
+- `getTestResult(file)` — 返回 `(time, passNum, totalNum, rows)`，`rows` 为原始行列表
+- `insertResult(conn, time, passNum, totalNum, rows)` — 调用 `db.insert_run` + `db.insert_test_cases`
+
+### watch_new_files.py — 主入口
+
+- 启动时创建 `WATCH_DIR`，调用 `db.init_db()` 初始化数据库
+- 重启后**不重建历史数据**（SQLite 持久化，数据已在）
+- 其余轮询逻辑（每 2 秒 diff）与 CSV 版本相同
+
+```
+watch_new_files.py
+    ├── db.py          → /data/test_results.db
+    └── resultSum.py   → 解析 CSV，写入 runs + test_cases 表
+```
 
 ---
 
-## 三者关系
+## Grafana 查询示例（app_2.0 版本）
 
-```
-watch_new_files.py          ← 调度中心
-    ├── resultSum.py         ← 负责"数字"（pass/total → catch2Result.csv）
-    └── csv2html.py          ← 负责"展示"（CSV → HTML 报告）
+```sql
+-- 趋势图
+SELECT time, pass, total FROM runs ORDER BY time
+
+-- 明细表（变量 $run_id）
+SELECT num, module, binary, case_name, result
+FROM test_cases WHERE run_id = $run_id
+
+-- 变量数据源（下拉选择运行）
+SELECT id || ' - ' || time AS label, id AS value
+FROM runs ORDER BY time DESC
 ```

@@ -6,10 +6,19 @@
 
 ```
 单一容器 dt_all
-├── nginx          端口 8080 → 宿主 9699   接收 CI 上传 / 提供静态文件
+├── nginx          端口 8080 → 宿主 9699   接收 CI 上传
 ├── grafana-server 端口 3000 → 宿主 9696   仪表盘
-└── python watcher                          监听新 CSV，生成 HTML 报告
+└── python watcher                          监听新 CSV，写入 SQLite
 ```
+
+### watcher 版本
+
+| 目录 | 存储方式 | Grafana 插件 | 状态 |
+|------|---------|-------------|------|
+| `app/` | CSV 文件 + HTML 报告 | Infinity | 备用 |
+| `app_2.0/` | SQLite 数据库 | frser-sqlite-datasource | **当前使用** |
+
+切换版本只需修改 Dockerfile 中的 `COPY` 目标行和插件安装行。
 
 ---
 
@@ -17,14 +26,15 @@
 
 ```
 grafana_v2.0/
-├── Dockerfile                  # 镜像构建定义
+├── Dockerfile                  # 镜像构建定义（当前使用 app_2.0/）
 ├── conf/
-│   ├── nginx.conf              # nginx WebDAV + 静态文件配置
+│   ├── nginx.conf              # nginx WebDAV PUT 配置
 │   └── supervisord.conf        # 三进程管理配置
-├── app/                        # Python 脚本（打包进镜像）
-│   ├── watch_new_files.py
-│   ├── csv2html.py
-│   └── resultSum.py
+├── app/                        # CSV 版本（保留备用）
+├── app_2.0/                    # SQLite 版本（当前打包进镜像）
+│   ├── db.py                   # SQLite 建表 + CRUD
+│   ├── resultSum.py            # CSV 解析 + 写库
+│   └── watch_new_files.py      # 文件监听主入口
 └── build_script/
     └── build_all_in_one.sh     # 一键构建 + 导出 + 启动
 ```
@@ -34,7 +44,7 @@ grafana_v2.0/
 ## 前置条件
 
 - 已安装 Docker（建议 20.x 及以上）
-- 构建机器可访问外网（需下载 debian 软件包、Grafana apt 源、Infinity 插件）
+- 构建机器可访问外网（需下载 debian 软件包、Grafana apt 源、frser-sqlite-datasource 插件）
 
 ---
 
@@ -52,8 +62,6 @@ bash build_script/build_all_in_one.sh
 2. `docker export`：将镜像导出为 `dt_all_1.0.tar`（约 1~2 GB）
 3. `docker run`：在本机启动容器
 
-构建时间约 3~10 分钟（取决于网速），主要耗时在下载 Grafana 安装包和 Infinity 插件。
-
 ---
 
 ## 部署到其他机器
@@ -61,10 +69,7 @@ bash build_script/build_all_in_one.sh
 ### 方式一：复制源码后在目标机器构建（目标机器有网络）
 
 ```bash
-# 1. 将整个 grafana_v2.0/ 目录复制到目标机器
 scp -r grafana_v2.0/ user@target:/path/to/
-
-# 2. 在目标机器上执行构建
 bash grafana_v2.0/build_script/build_all_in_one.sh
 ```
 
@@ -75,12 +80,11 @@ bash grafana_v2.0/build_script/build_all_in_one.sh
 bash build_script/build_all_in_one.sh
 # 生成 grafana_v2.0/dt_all_1.0.tar
 
-# 2. 将 tar 包传到目标机器
+# 2. 传输并加载
 scp dt_all_1.0.tar user@target:/path/to/
-
-# 3. 在目标机器上 import 并启动
 docker import dt_all_1.0.tar dt_all:1.0
 
+# 3. 启动（docker export/import 会丢失 CMD，需手动指定）
 docker run -d --restart=always --name dt_all \
     -p 9696:3000 \
     -p 9699:8080 \
@@ -88,12 +92,6 @@ docker run -d --restart=always --name dt_all \
     dt_all:1.0 \
     /usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf
 ```
-
-> **注意**：`docker export/import` 会丢失镜像的 `CMD`/`ENTRYPOINT` 元数据，
-> 因此 `docker import` 后启动时必须在命令末尾**手动指定启动命令**：
-> `/usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf`
->
-> 若使用 `docker save/load` 则不需要此步骤（保留元数据），但文件更大。
 
 ---
 
@@ -103,9 +101,8 @@ docker run -d --restart=always --name dt_all \
 
 | 容器内路径 | 说明 |
 |-----------|------|
-| `/data/details/sources/` | CI 上传的 CSV 文件存放位置（按时间戳子目录组织） |
-| `/data/details/html/` | watcher 生成的 HTML 报告 |
-| `/data/catch2Result.csv` | watcher 生成的汇总 CSV（Grafana 读取） |
+| `/data/details/sources/` | CI 上传的 CSV 文件（按时间戳子目录组织） |
+| `/data/test_results.db` | SQLite 数据库（watcher 写入，Grafana 读取） |
 
 启动前确保宿主机目录存在：
 
@@ -131,7 +128,30 @@ Num,module,binary,case,result
 1,module/device,DeviceTest,txGetDevice_Fail,failed
 ```
 
-`result` 列支持：`pass`、`failed`、`timeout`
+---
+
+## Grafana 数据源配置
+
+安装 `frser-sqlite-datasource` 插件后，在 Grafana 中添加 SQLite 数据源，文件路径填写：
+
+```
+/data/test_results.db
+```
+
+**常用查询：**
+
+```sql
+-- 趋势图
+SELECT time, pass, total FROM runs ORDER BY time
+
+-- 明细表（配合变量 $run_id）
+SELECT num, module, binary, case_name, result
+FROM test_cases WHERE run_id = $run_id
+
+-- 变量数据源（下拉选择运行）
+SELECT id || ' - ' || time AS label, id AS value
+FROM runs ORDER BY time DESC
+```
 
 ---
 
@@ -141,34 +161,27 @@ Num,module,binary,case,result
 # 查看三个进程是否全部 RUNNING
 docker exec dt_all supervisorctl status
 
-# 预期输出：
-# grafana                          RUNNING   pid 123, uptime 0:01:00
-# nginx                            RUNNING   pid 124, uptime 0:01:00
-# watcher                          RUNNING   pid 125, uptime 0:01:00
+# 确认 SQLite 数据写入
+docker exec dt_all sqlite3 /data/test_results.db \
+  "SELECT * FROM runs; SELECT COUNT(*) FROM test_cases;"
 
-# 查看各进程日志
+# 查看 watcher 日志
 docker exec dt_all tail -f /var/log/supervisor/watcher.log
-docker exec dt_all tail -f /var/log/supervisor/nginx_err.log
-docker exec dt_all tail -f /var/log/supervisor/grafana.log
-
-# 测试 nginx 静态文件访问
-curl -u user:pass123 http://localhost:9699/data/catch2Result.csv
-
-# 访问 Grafana（默认账号 admin / admin）
-http://localhost:9696
 ```
 
 ---
 
 ## 注意事项
 
-1. **Grafana Infinity 插件**：构建时自动在线安装。若无网络，需提前下载 zip 包放入目录，并修改 Dockerfile 改为离线安装。
-
-2. **nginx WebDAV**：使用 `nginx-extras` 包（含 `ngx_http_dav_module`），Basic Auth 账号固定为 `user:pass123`，如需修改请更新 Dockerfile 中的 `htpasswd` 命令后重新构建。
-
-3. **watcher 重启行为**：容器重启时 watcher 会清空 `/data/details/html/` 并重新扫描所有已有 CSV 重建 HTML，这是设计行为（`watch_new_files.py` 中 `initHtmlDir()` 的逻辑）。`/data/catch2Result.csv` 也会被重置，只保留当前 `sources/` 目录下已有文件的汇总。
-
-4. **数据持久化**：Grafana 自身数据（dashboard 配置、数据源等）存储在容器内 `/var/lib/grafana`，容器删除后会丢失。如需持久化，额外挂载：
+1. **Grafana dashboard 不持久化**：`/var/lib/grafana` 在容器内，容器删除后 dashboard 配置丢失。如需持久化，增加挂载：
    ```bash
    -v /your/grafana/data:/var/lib/grafana
    ```
+
+2. **`docker export/import` 丢失 CMD**：`import` 后启动时必须手动在 `docker run` 末尾指定 `/usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf`。
+
+3. **frser-sqlite-datasource 需构建时联网**：离线环境需提前下载插件 zip 包并修改 Dockerfile 改为离线安装。
+
+4. **Basic Auth 凭据硬编码**：账号 `user:pass123` 写入 Dockerfile，修改需重新构建。
+
+5. **切换回 CSV 版本**：修改 Dockerfile 的 `COPY app_2.0/` → `COPY app/` 和插件为 `yesoreyeram-infinity-datasource`，并在 `conf/nginx.conf` 中恢复 `/data/` GET location。
