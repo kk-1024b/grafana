@@ -152,7 +152,53 @@ main()
               resultSum.insertResult()
 ```
 
-**重启行为**：启动时**不重建历史数据**（`test_results.db` 持久化，数据已在），只记录现有文件集合用于后续 diff。
+**重启行为**：启动时**不重建历史数据**（`test_results.db` 持久化，数据已在），只记录现有文件集合用于后续 diff。若 DB 丢失或损坏，使用 `rebuild_db.py`（见 4.4）从原始文件重建。
+
+### 4.4 `rebuild_db.py` — 数据库重建工具
+
+**职责**：DB 损坏或丢失时，遍历所有历史 CSV 文件，从零重建 `test_results.db`。原始文件是唯一的真实来源，重建是幂等操作。
+
+**用法**：
+
+```bash
+# 容器内（默认路径）
+cd /app && python3 rebuild_db.py
+
+# 自定义路径（本地测试）
+python3 app_catch2/rebuild_db.py \
+  --source-dir ./test_data \
+  --db-path ./test.db
+```
+
+**参数**：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--source-dir` | `/data/details/catch2` | 存放时间戳子目录的根目录 |
+| `--db-path` | `/data/test_results.db` | 输出 DB 路径 |
+
+**执行逻辑**：
+
+```
+1. 删除现有 DB 文件（若存在）
+2. db.init_db(db_path)        重建表结构
+3. glob **/testResult.csv     按目录名排序（保证时间顺序）
+4. 逐文件：
+     resultSum.getTestResult()
+     resultSum.switchTime()
+     resultSum.insertResult()
+     打印进度 [i/N] OK/SKIP
+5. 打印汇总：X/N imported
+```
+
+解析失败的文件打印 `SKIP` 跳过，不中断整体流程。
+
+**验证**：重建完成后，`runs` 表行数应等于 `/data/details/catch2/` 下子目录数：
+
+```bash
+sqlite3 /data/test_results.db "SELECT COUNT(*) FROM runs;"
+ls /data/details/catch2/ | wc -l
+```
 
 ---
 
