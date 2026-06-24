@@ -13,7 +13,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-WATCH_DIR = Path('/data/details/sources')
+WATCH_DIR = Path('/data/details/catch2')
 SECONDS = 2
 
 

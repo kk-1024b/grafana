@@ -26,7 +26,7 @@ RUN grafana cli --pluginsDir /var/lib/grafana/plugins plugins install frser-sqli
 RUN htpasswd -cb /etc/nginx/.htpasswd user pass123
 
 # Bake in Python watcher scripts
-COPY app_2.0/ /app/
+COPY app_catch2/ /app/
 COPY app_bm/ /app_bm/
 
 # nginx and supervisord configs
