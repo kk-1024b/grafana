@@ -5,6 +5,7 @@ from pathlib import Path
 
 import db
 import resultSum
+import csv2html
 
 logging.basicConfig(
     level='INFO',
@@ -14,6 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 WATCH_DIR = Path('/data/details/catch2')
+HTML_DIR = Path('/data/details/html')
 SECONDS = 2
 
 
@@ -22,6 +24,8 @@ def processNewFile(conn, f):
     tm, passNum, totalNum, rows = resultSum.getTestResult(f)
     tm = resultSum.switchTime(tm)
     resultSum.insertResult(conn, tm, passNum, totalNum, rows)
+    html_file = HTML_DIR / f"report-{tm}.html"
+    csv2html.switch_csv2html(str(f), str(html_file), tm)
 
 
 def watcher_task(conn, known):
@@ -36,6 +40,7 @@ def watcher_task(conn, known):
 
 def main():
     WATCH_DIR.mkdir(parents=True, exist_ok=True)
+    HTML_DIR.mkdir(parents=True, exist_ok=True)
     conn = db.init_db()
     logger.info("Database initialized")
 
