@@ -155,6 +155,17 @@ FROM runs ORDER BY time DESC
 
 ---
 
+## 默认账号
+
+| 服务 | 用户名 | 密码 |
+|------|-------|------|
+| Grafana | `admin` | `admin` |
+| nginx Basic Auth | `user` | `pass123` |
+
+Grafana 密码由 `conf/supervisord.conf` 中 `GF_SECURITY_ADMIN_PASSWORD` 控制，nginx 凭据由 Dockerfile 中 `htpasswd` 命令控制，修改均需重新构建镜像。
+
+---
+
 ## 验证容器运行状态
 
 ```bash

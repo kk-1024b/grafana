@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
     ca-certificates \
+    sqlite3 \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Grafana from official apt repo
@@ -25,6 +27,7 @@ RUN htpasswd -cb /etc/nginx/.htpasswd user pass123
 
 # Bake in Python watcher scripts
 COPY app_2.0/ /app/
+COPY app_bm/ /app_bm/
 
 # nginx and supervisord configs
 COPY conf/nginx.conf /etc/nginx/sites-available/default
