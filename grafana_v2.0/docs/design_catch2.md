@@ -14,9 +14,9 @@
 CI/CD 流水线
     │
     │ curl -u user:pass123 -T testResult.csv
-    │ http://host:9699/catch2/{timestamp}/testResult.csv
+    │ http://host:9698/catch2/{timestamp}/testResult.csv
     ▼
-nginx (9699)
+nginx (9698)
     │ WebDAV PUT → 写入 /data/details/catch2/{timestamp}/testResult.csv
     ▼
 watcher（轮询间隔 2 秒）
@@ -228,7 +228,7 @@ CI 上传命令：
 ```bash
 # 时间戳格式：YYYY-MM-DD_HH-MM-SS
 curl -u user:pass123 -T testResult.csv \
-  http://localhost:9699/catch2/2026-06-24_10-00-00/testResult.csv
+  http://localhost:9698/catch2/2026-06-24_10-00-00/testResult.csv
 ```
 
 ---
@@ -319,7 +319,7 @@ location /data/ {
 | 维度 | app_catch2 | app_bm |
 |------|-----------|--------|
 | 输入格式 | CSV | JSON |
-| 上传路径 | `/catch2/{ts}/testResult.csv` | `/benchmark/{ts}/result.json` |
+| 上传路径 | `/details/sources/{ts}/testResult.csv` | `/details/sources_bm/{ts}/result.json` |
 | 监听目录 | `/data/details/catch2/` | `/data/details/benchmark/` |
 | 数据库 | `test_results.db` | `benchmark_results.db` |
 | 进程名 | `watcher` | `bm_watcher` |

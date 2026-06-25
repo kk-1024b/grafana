@@ -20,9 +20,9 @@ SECONDS = 2
 def process_new_file(conn, f):
     logger.info(f"New file: {f}")
     date, author, host_srv, benchmarks = bm_parser.parse_json(f)
-    run_id = db_bm.insert_run(conn, date, author, host_srv)
-    db_bm.insert_benchmarks(conn, run_id, benchmarks)
-    logger.info(f"Inserted run_id={run_id} date={date} benchmarks={len(benchmarks)}")
+    for bm in benchmarks:
+        db_bm.insert_benchmark(conn, bm['name'], date, host_srv, author, bm)
+    logger.info(f"Inserted date={date} benchmarks={len(benchmarks)}")
 
 
 def watcher_task(conn, known):

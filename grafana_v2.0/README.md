@@ -6,7 +6,7 @@
 
 ```
 单一容器 dt_all
-├── nginx          端口 8080 → 宿主 9699   接收 CI 上传
+├── nginx          端口 8080 → 宿主 9698   接收 CI 上传
 ├── grafana-server 端口 3000 → 宿主 9696   仪表盘
 └── python watcher                          监听新 CSV，写入 SQLite
 ```
@@ -87,7 +87,7 @@ docker import dt_all_1.0.tar dt_all:1.0
 # 3. 启动（docker export/import 会丢失 CMD，需手动指定）
 docker run -d --restart=always --name dt_all \
     -p 9696:3000 \
-    -p 9699:8080 \
+    -p 9698:8080 \
     -v /your/data/path:/data \
     dt_all:1.0 \
     /usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf
@@ -117,7 +117,7 @@ mkdir -p /your/data/path/details/sources
 ```bash
 # 时间戳格式：YYYY-MM-DD_HH-MM-SS
 curl -u user:pass123 -T testResult.csv \
-  http://localhost:9699/details/sources/2026-06-23_10-00-00/testResult.csv
+  http://localhost:9698/details/sources/2026-06-23_10-00-00/testResult.csv
 ```
 
 `testResult.csv` 格式：

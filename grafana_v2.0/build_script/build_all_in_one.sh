@@ -26,18 +26,18 @@ docker rm -f "$CONTAINER" 2>/dev/null || true
 # Start container
 docker run -d --restart=always --name "$CONTAINER" \
     -p 9696:3000 \
-    -p 9699:8080 \
+    -p 9698:8080 \
     -v "$DATA_DIR":/data \
     "$IMAGE"
 
-echo "Started: Grafana -> http://localhost:9696  |  nginx -> http://localhost:9699"
+echo "Started: Grafana -> http://localhost:9696  |  nginx -> http://localhost:9698"
 
 # -------------------------------------------------------
 # To load and run on another machine:
 #
 #   docker import dt_all_1.0.tar dt_all:1.0
 #   docker run -d --restart=always --name dt_all \
-#       -p 9696:3000 -p 9699:8080 \
+#       -p 9696:3000 -p 9698:8080 \
 #       -v /your/data/path:/data \
 #       dt_all:1.0 \
 #       /usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf

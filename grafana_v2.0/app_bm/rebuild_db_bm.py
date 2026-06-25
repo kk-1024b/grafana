@@ -45,8 +45,8 @@ def main():
     for i, f in enumerate(json_files, 1):
         try:
             date, author, host_srv, benchmarks = bm_parser.parse_json(f)
-            run_id = db_bm.insert_run(conn, date, author, host_srv)
-            db_bm.insert_benchmarks(conn, run_id, benchmarks)
+            for bm in benchmarks:
+                db_bm.insert_benchmark(conn, bm['name'], date, host_srv, author, bm)
             print(f'[{i}/{len(json_files)}] OK  {f}  ({len(benchmarks)} benchmarks)')
             ok += 1
         except Exception as e:

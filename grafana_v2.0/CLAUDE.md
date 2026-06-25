@@ -29,7 +29,7 @@ docker exec dt_all tail -f /var/log/supervisor/grafana.log
 # Load the exported tar (CMD is lost on docker export — must specify it explicitly)
 docker import dt_all_1.0.tar dt_all:1.0
 docker run -d --restart=always --name dt_all \
-    -p 9696:3000 -p 9699:8080 \
+    -p 9696:3000 -p 9698:8080 \
     -v /your/data/path:/data \
     dt_all:1.0 \
     /usr/bin/supervisord -n -c /etc/supervisor/conf.d/all.conf
@@ -39,16 +39,16 @@ docker run -d --restart=always --name dt_all \
 
 ```
 supervisord
-├── nginx (8080 → host:9699)   PUT /details/ → /data/details/sources/
+├── nginx (8080 → host:9698)   PUT /details/sources/ → /data/details/sources/ (symlink→catch2)
 ├── grafana-server (3000 → host:9696)  queries /data/test_results.db via SQLite plugin
-└── python3 /app/watch_new_files.py    polls /data/details/sources/ every 2s
+└── python3 /app/watch_new_files.py    polls /data/details/catch2/ every 2s
 ```
 
 Single volume mount: `-v /host/catch2_data/data:/data`
 
 ## Data Flow
 
-1. CI uploads `testResult.csv` via `PUT /details/sources/<YYYY-MM-DD_HH-MM-SS>/testResult.csv`
+1. CI uploads `testResult.csv` via `PUT /details/sources/<YYYY-MM-DD_HH-MM-SS>/testResult.csv` (port 9698)
 2. Watcher detects new file → parses pass/total counts + all rows → writes to SQLite (`runs` + `test_cases` tables)
 3. Grafana `frser-sqlite-datasource` plugin queries `/data/test_results.db` directly
 
@@ -80,7 +80,7 @@ test_cases(id, run_id → runs.id, num, module, binary, case_name, result TEXT)
 
 DB file: `/data/test_results.db` (inside mounted volume — persistent across restarts)
 
-Timestamp format in `runs.time`: `2026-06-23 10:00:00` (converted from directory name `2026-06-23_10-00-00`)
+Timestamp format in `runs.time`: `2026-06-23T10:00:00Z` (RFC3339, converted from directory name `2026-06-23_10-00-00`)
 
 ## Important Constraints
 

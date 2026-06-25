@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 
 
 def _switch_time(tm):
-    '''2026-05-22_10-10-32 -> 2026-05-22 10:10:32'''
-    parts = tm.replace('_', ' ').rsplit('-', 2)
-    return f"{parts[0]}:{':'.join(parts[1:])}"
+    '''2026-05-22_10-10-32 -> 2026-05-22T10:10:32Z (RFC3339)'''
+    parts = tm.replace('_', 'T').rsplit('-', 2)
+    return f"{parts[0]}:{':'.join(parts[1:])}Z"
 
 
 def parse_json(file):

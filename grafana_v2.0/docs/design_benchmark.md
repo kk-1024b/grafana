@@ -14,17 +14,16 @@
 CI/CD 流水线
     │
     │ curl -u user:pass123 -T result.json
-    │ http://host:9699/benchmark/{timestamp}/result.json
+    │ http://host:9698/details/sources_bm/{timestamp}/result.json
     ▼
-nginx (9699)
+nginx (9698)
     │ WebDAV PUT → 写入 /data/details/benchmark/{timestamp}/result.json
     ▼
 bm_watcher（轮询间隔 2 秒）
     ├── 检测 /data/details/benchmark/ 下新 .json 文件
     ├── bm_parser.py 解析 JSON
     └── db_bm.py 写入 benchmark_results.db
-         ├── runs 表（顶层元数据）
-         └── benchmarks 表（各条 benchmark 数据）
+         └── 每个 benchmark name 对应一张独立表（按需自动创建）
          ▼
 Grafana (9696)
     └── frser-sqlite-datasource 查询 /data/benchmark_results.db
@@ -88,43 +87,35 @@ Grafana (9696)
 
 ### 4.1 `db_bm.py` — 数据库层
 
-**职责**：建表、提供 CRUD 接口。
+**职责**：按需动态建表、提供插入接口。
 
 ```
 init_db(db_path) → conn
-insert_run(conn, date, author, host_srv) → run_id
-insert_benchmarks(conn, run_id, benchmarks)
+ensure_table(conn, name)              # 首次遇到新 name 时建表（幂等）
+insert_benchmark(conn, name, date, host_srv, author, bm)
 ```
 
-**Schema**：
+**Schema**（每个 benchmark name 对应一张表，表名即 name 字段，消毒后使用）：
 
 ```sql
-CREATE TABLE IF NOT EXISTS runs (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    date     TEXT NOT NULL,   -- 格式：2026-05-22 10:10:32
-    author   TEXT,
-    host_srv TEXT
-);
-
-CREATE TABLE IF NOT EXISTS benchmarks (
+-- 示例：BM_MemcpyD2H_Pageable
+CREATE TABLE IF NOT EXISTS "BM_MemcpyD2H_Pageable" (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id     INTEGER NOT NULL REFERENCES runs(id),
-    name       TEXT,          -- BM_MemcpyD2H_Pageable
-    run_name   TEXT,          -- BM_MemcpyD2H_Pageable/1073741824
-    run_type   TEXT,
-    threads    INTEGER,
-    iterations INTEGER,
-    real_time  REAL,          -- 单位 ns
-    cpu_time   REAL,          -- 单位 ns
+    date       TEXT NOT NULL,   -- RFC3339: 2026-05-22T10:10:32Z
+    host_srv   TEXT,
+    author     TEXT,
+    size       REAL,            -- bytes
+    real_time  REAL,            -- 单位 ns
+    cpu_time   REAL,            -- 单位 ns
     time_unit  TEXT,
-    metrics    REAL,          -- 吞吐量
-    size       REAL           -- bytes
+    metrics    REAL,            -- 吞吐量（bytes/s 等）
+    iterations INTEGER
 );
 ```
 
 数据库文件路径：`/data/benchmark_results.db`
 
-**关联关系**：`benchmarks.run_id → runs.id`，一次运行对应多条 benchmark 记录。
+**表命名规则**：`re.sub(r'[^\w]', '_', name)` 消毒后作为表名，加双引号包裹避免 SQL 关键字冲突。
 
 ### 4.2 `bm_parser.py` — JSON 解析层
 
@@ -166,8 +157,8 @@ main()
         ├── diff（current - known）= 新文件
         └── 对每个新文件：
               bm_parser.parse_json()
-              db_bm.insert_run()
-              db_bm.insert_benchmarks()
+              for bm in benchmarks:
+                  db_bm.insert_benchmark(bm['name'], ...)
 ```
 
 **重启行为**：启动时**不重建历史数据**（`benchmark_results.db` 持久化，数据已在），只记录现有文件集合用于后续 diff。若 DB 丢失或损坏，使用 `rebuild_db_bm.py`（见 4.4）从原始文件重建。
@@ -203,19 +194,22 @@ python3 app_bm/rebuild_db_bm.py \
 3. glob **/*.json             按目录名排序（保证时间顺序）
 4. 逐文件：
      bm_parser.parse_json()
-     db_bm.insert_run()
-     db_bm.insert_benchmarks()
+     for bm in benchmarks:
+         db_bm.insert_benchmark(bm['name'], ...)
      打印进度 [i/N] OK/SKIP（含 benchmark 条数）
 5. 打印汇总：X/N imported
 ```
 
 解析失败的文件打印 `SKIP` 跳过，不中断整体流程。
 
-**验证**：重建完成后，`runs` 表行数应等于 `/data/details/benchmark/` 下子目录数：
+**验证**：重建完成后，用 `.tables` 确认各 benchmark 表已创建：
 
 ```bash
-sqlite3 /data/benchmark_results.db "SELECT COUNT(*) FROM runs;"
-ls /data/details/benchmark/ | wc -l
+sqlite3 /data/benchmark_results.db ".tables"
+# 预期：列出 BM_MemcpyD2H_Pageable  BM_MemcpyD2H_Pinned 等
+
+sqlite3 /data/benchmark_results.db \
+  "SELECT COUNT(*) FROM BM_MemcpyD2H_Pageable;"
 ```
 
 ---
@@ -233,7 +227,7 @@ ls /data/details/benchmark/ | wc -l
 ## 6. nginx 配置
 
 ```nginx
-location /benchmark/ {
+location /details/sources_bm/ {
     alias /data/details/benchmark/;
     dav_methods PUT DELETE MKCOL COPY MOVE;
     dav_access user:rw group:rw all:r;
@@ -245,7 +239,7 @@ CI 上传命令：
 
 ```bash
 curl -u user:pass123 -T result.json \
-  http://localhost:9699/benchmark/2026-05-22_10-10-32/result.json
+  http://localhost:9698/details/sources_bm/2026-05-22_10-10-32/result.json
 ```
 
 ---
@@ -273,26 +267,26 @@ docker exec dt_all tail -f /var/log/supervisor/bm_watcher_err.log
 
 数据源：`frser-sqlite-datasource`，文件路径 `/data/benchmark_results.db`
 
+每个 benchmark name 对应一张表，Time Series 面板直接查对应表，Time column = `date`。
+
 ```sql
--- 所有运行列表
-SELECT id, date, author, host_srv FROM runs ORDER BY date DESC
+-- 折线图：某 benchmark 的 metrics 历史趋势
+SELECT date, metrics
+FROM BM_MemcpyD2H_Pageable
+ORDER BY date
 
--- 某次运行的所有 benchmark（变量 $run_id）
-SELECT name, run_name, real_time, cpu_time, metrics, size, time_unit
-FROM benchmarks WHERE run_id = $run_id
+-- 多指标对比（同一面板多条线）
+SELECT date, real_time, cpu_time, metrics
+FROM BM_MemcpyD2H_Pageable
+ORDER BY date
 
--- 指定 benchmark 的历史趋势（变量 $bm_name）
-SELECT r.date, b.real_time, b.metrics, b.size
-FROM benchmarks b JOIN runs r ON b.run_id = r.id
-WHERE b.name = '$bm_name'
-ORDER BY r.date
-
--- 同一运行内按 size 排序（吞吐量分析）
-SELECT size, metrics, real_time
-FROM benchmarks
-WHERE run_id = $run_id AND name = '$bm_name'
-ORDER BY size
+-- 最近 N 条记录
+SELECT date, metrics
+FROM BM_MemcpyD2H_Pageable
+ORDER BY date DESC LIMIT 20
 ```
+
+**面板配置**：Standard options → Unit 设为 `bytes/s`（metrics 为吞吐量时），Min = 0。
 
 ---
 
@@ -301,7 +295,7 @@ ORDER BY size
 | 维度 | app_catch2 | app_bm |
 |------|-----------|--------|
 | 输入格式 | CSV | JSON |
-| 上传路径 | `/catch2/{ts}/testResult.csv` | `/benchmark/{ts}/result.json` |
+| 上传路径 | `/details/sources/{ts}/testResult.csv` | `/details/sources_bm/{ts}/result.json` |
 | 监听目录 | `/data/details/catch2/` | `/data/details/benchmark/` |
 | 数据库 | `test_results.db` | `benchmark_results.db` |
 | 进程名 | `watcher` | `bm_watcher` |

@@ -2,6 +2,7 @@
 import csv
 import pathlib
 import logging
+from datetime import datetime, timezone
 
 import db
 
@@ -30,9 +31,9 @@ def getTestResult(file):
 
 
 def switchTime(tm):
-    '''switch 2025-09-22_04-03-23 to 2025-09-22 04:03:23'''
-    parts = tm.replace('_', ' ').rsplit('-', 2)
-    new_tm = f"{parts[0]}:{':'.join(parts[1:])}"
+    '''switch 2025-09-22_04-03-23 to 2025-09-22T04:03:23Z (RFC3339)'''
+    parts = tm.replace('_', 'T').rsplit('-', 2)
+    new_tm = f"{parts[0]}:{':'.join(parts[1:])}Z"
     logger.info(f"{tm} -> {new_tm}")
     return new_tm
 

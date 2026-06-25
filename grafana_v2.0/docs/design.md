@@ -26,7 +26,7 @@
 ┌─────────────────────────── Docker 容器 dt_all ─────────────────────────────┐
 │                                                                              │
 │   supervisord（进程守护）                                                    │
-│   ├── nginx           监听 8080，对外映射 9699                               │
+│   ├── nginx           监听 8080，对外映射 9698                               │
 │   │   ├── PUT /details/  ← CI/CD 上传 CSV                                   │
 │   │   └── GET /data/     → Grafana 读取 CSV / HTML                          │
 │   │                                                                          │
@@ -48,9 +48,9 @@
 CI/CD 流水线
     │
     │ curl -u user:pass123 -T testResult.csv
-    │ http://host:9699/details/sources/{timestamp}/testResult.csv
+    │ http://host:9698/details/sources/{timestamp}/testResult.csv
     ▼
-nginx (9699)
+nginx (9698)
     │ WebDAV PUT → 写入 /data/details/sources/{timestamp}/testResult.csv
     ▼
 Python watcher（轮询间隔 2 秒）
@@ -71,7 +71,7 @@ Grafana (9696)
 
 **角色**：文件上传入口 + 静态文件服务器
 
-**监听端口**：8080（容器内），映射到宿主 9699
+**监听端口**：8080（容器内），映射到宿主 9698
 
 **关键配置**：
 
@@ -157,8 +157,8 @@ grafana cli --pluginsDir /var/lib/grafana/plugins plugins install yesoreyeram-in
 ```
 
 **数据读取路径**：
-- 汇总趋势：`http://localhost:9699/data/catch2Result.csv`
-- 单次报告：`http://localhost:9699/data/details/html/report-{timestamp}.html`
+- 汇总趋势：`http://localhost:9698/data/catch2Result.csv`
+- 单次报告：`http://localhost:9698/data/details/html/report-{timestamp}.html`
 
 **启动方式**（supervisord 调用）：
 ```bash
