@@ -29,6 +29,11 @@ def init_db(db_path=DB_PATH):
     return conn
 
 
+def run_exists(conn, time):
+    cur = conn.execute('SELECT 1 FROM runs WHERE time = ? LIMIT 1', (time,))
+    return cur.fetchone() is not None
+
+
 def insert_run(conn, time, pass_, total):
     cur = conn.execute(
         'INSERT INTO runs (time, pass, total) VALUES (?, ?, ?)',

@@ -39,6 +39,9 @@ def switchTime(tm):
 
 
 def insertResult(conn, time, passNum, totalNum, rows):
+    if db.run_exists(conn, time):
+        logger.info(f"Run already in DB, skipping: {time}")
+        return None
     run_id = db.insert_run(conn, time, passNum, totalNum)
     db.insert_test_cases(conn, run_id, rows)
     logger.info(f"Inserted run_id={run_id} time={time} {passNum}/{totalNum} cases={len(rows)}")
