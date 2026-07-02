@@ -194,6 +194,22 @@ def switch_csv2html(csv_file, html_file, test_time):
     logger.info(f"✅  Generated {html_file}  ({len(rows)} rows)")
 
 
+def switch_json2html(json_file, html_file, test_time):
+    logger.info(
+        f"\n\nswitch_json2html: json:{json_file} \nhtml:{html_file} \ntest_time:{test_time}\n\n"
+    )
+    with open(json_file, encoding='utf-8') as f:
+        data = json.load(f)
+    rows = [{**{k: v for k, v in r.items() if k != 'num'}, 'Num': r['num']}
+            for r in data['results']]
+    if not rows:
+        logger.warning(f"No results in JSON: {json_file}")
+        return
+    with open(html_file, 'w', encoding='utf-8') as f:
+        f.write(build_html(rows, test_time))
+    logger.info(f"Generated {html_file}  ({len(rows)} rows)")
+
+
 def initHtmlDir(dir_path):
     return
 

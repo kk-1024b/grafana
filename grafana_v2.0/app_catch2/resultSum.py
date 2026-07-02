@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import csv
+import json
 import pathlib
 import logging
 from datetime import datetime, timezone
@@ -36,6 +37,19 @@ def switchTime(tm):
     new_tm = f"{parts[0]}:{':'.join(parts[1:])}Z"
     logger.info(f"{tm} -> {new_tm}")
     return new_tm
+
+
+def getTestResultFromJson(file):
+    logger.info(f"getTestResultFromJson file: {file}")
+    with open(file, encoding='utf-8') as f:
+        data = json.load(f)
+    tm = data['time'].replace(' ', 'T') + 'Z'
+    passNum = data['summary']['pass']
+    totalNum = data['summary']['total']
+    rows = [{**{k: v for k, v in r.items() if k != 'num'}, 'Num': r['num']}
+            for r in data['results']]
+    logger.info(f"{tm}, {passNum}/{totalNum}")
+    return tm, passNum, totalNum, rows
 
 
 def insertResult(conn, time, passNum, totalNum, rows):

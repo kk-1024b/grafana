@@ -34,6 +34,14 @@ def processNewFile(conn, f):
         shutil.move(f, dst)
         return
 
+    if Path(f).suffix == '.json':
+        tm, passNum, totalNum, rows = resultSum.getTestResultFromJson(f)
+        resultSum.insertResult(conn, tm, passNum, totalNum, rows)
+        html_file = HTML_DIR / f"report-{tm}.html"
+        logger.info(f"json2html: {f} -> {html_file}")
+        csv2html.switch_json2html(str(f), str(html_file), tm)
+        return
+
     tm, passNum, totalNum, rows = resultSum.getTestResult(f)
     tm = resultSum.switchTime(tm)
     resultSum.insertResult(conn, tm, passNum, totalNum, rows)
