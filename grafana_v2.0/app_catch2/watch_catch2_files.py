@@ -2,6 +2,7 @@
 import shutil
 import time
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import db
@@ -74,6 +75,12 @@ def initDir():
         HTML_DIR.mkdir(parents=True, exist_ok=True)
 
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    if db.DB_PATH.exists():
+        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        bak = db.DB_PATH.parent / f"test_results_{ts}.db.bak"
+        shutil.copy2(db.DB_PATH, bak)
+        logger.info(f"DB backed up to {bak}")
 
     conn = db.init_db()
     logger.info("Database initialized")

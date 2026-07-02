@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import shutil
 import time
 import logging
+from datetime import datetime
 from pathlib import Path
 
 import db_bm
@@ -37,6 +39,13 @@ def watcher_task(conn, known):
 
 def main():
     WATCH_DIR.mkdir(parents=True, exist_ok=True)
+
+    if db_bm.DB_PATH.exists():
+        ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        bak = db_bm.DB_PATH.parent / f"benchmark_results_{ts}.db.bak"
+        shutil.copy2(db_bm.DB_PATH, bak)
+        logger.info(f"DB backed up to {bak}")
+
     conn = db_bm.init_db()
     logger.info("Benchmark database initialized")
 
