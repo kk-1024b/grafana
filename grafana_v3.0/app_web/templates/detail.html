@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>{{ run.platform }} / {{ run.os }} / {{ run.arch }} — Detail</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fa; padding: 24px; font-size: 14px; color: #333; }
+.back { display: inline-block; margin-bottom: 16px; color: #1a5fb4; text-decoration: none; font-size: 13px; }
+.back:hover { text-decoration: underline; }
+.header { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1); display: flex; gap: 32px; align-items: center; }
+.header h1 { font-size: 17px; font-weight: 600; }
+.summary { display: flex; gap: 16px; margin-left: auto; }
+.summary .pill { padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.pill.pass  { background: #D4EDDA; color: #1a6632; }
+.pill.fail  { background: #F8D7DA; color: #842029; }
+.pill.total { background: #e9ecef; color: #555; }
+.controls { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls input { padding: 6px 10px; border: 1px solid #dde1e7; border-radius: 5px; font-size: 13px; width: 240px; }
+.filter-btn { padding: 5px 12px; border: 1px solid #dde1e7; border-radius: 5px; font-size: 12px; cursor: pointer; background: #fff; color: #555; }
+.filter-btn.active { background: #1a5fb4; color: #fff; border-color: #1a5fb4; }
+.page-size-label { font-size: 12px; color: #666; margin-left: auto; }
+.page-size-label select { margin-left: 6px; padding: 4px 6px; border: 1px solid #dde1e7; border-radius: 5px; font-size: 12px; cursor: pointer; }
+.table-wrap { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f0f2f5; font-weight: 700; padding: 11px 12px; text-align: left; font-size: 16px; color: #333; border-bottom: 2px solid #dde1e7; white-space: nowrap; }
+th.num { width: 60px; text-align: center; }
+td { padding: 5px 12px; border-bottom: 1px solid #eaecf0; font-size: 14px; }
+td.num { text-align: center; color: #888; }
+td.result { font-weight: 600; }
+td.result.pass { color: #1a6632; }
+td.result.fail { color: #842029; }
+tr.fail-row td { background: #fff8f8; }
+tr:hover td { background: #f8f9fa; }
+tr.fail-row:hover td { background: #fff0f0; }
+.pagination { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid #eaecf0; font-size: 13px; color: #555; }
+.pagination button { padding: 4px 12px; border: 1px solid #dde1e7; border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px; }
+.pagination button:hover:not(:disabled) { background: #f0f2f5; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination .page-info { margin: 0 4px; }
+</style>
+</head>
+<body>
+
+<a class="back" href="/">← Back to Dashboard</a>
+
+<div class="header">
+  <div>
+    <h1 style="font-size:17px;">{{ run.platform }} / {{ run.os }} / {{ run.arch }} : {{ run.time | utc_to_cst }}</h1>
+  </div>
+  <div class="summary">
+    <span class="pill pass">✓ {{ run.pass }} passed</span>
+    <span class="pill fail">✗ {{ run.total - run.pass }} failed</span>
+    <span class="pill total">{{ run.total }} total</span>
+  </div>
+</div>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="Search case name..." oninput="onFilterChange()">
+  <button class="filter-btn active" id="btn-all"  onclick="setFilter('all')">All</button>
+  <button class="filter-btn"        id="btn-fail" onclick="setFilter('fail')">Failed</button>
+  <button class="filter-btn"        id="btn-pass" onclick="setFilter('pass')">Passed only</button>
+  <label class="page-size-label">
+    Page Size:
+    <select id="page-size" onchange="onPageSizeChange()">
+      <option value="10">10</option>
+      <option value="20" selected>20</option>
+      <option value="50">50</option>
+    </select>
+  </label>
+</div>
+
+<div class="table-wrap">
+<table id="result-table">
+  <thead>
+    <tr>
+      <th class="num">#</th>
+      <th>module</th>
+      <th>binary</th>
+      <th>case</th>
+      <th>result</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in cases %}
+    <tr data-result="{{ c.result or '' }}"{% if c.result != 'pass' %} class="fail-row"{% endif %}>
+      <td class="num">{{ c.num }}</td>
+      <td>{{ c.module or '' }}</td>
+      <td>{{ c.binary or '' }}</td>
+      <td class="case">{{ c.case_name or '' }}</td>
+      <td class="result {% if c.result == 'pass' %}pass{% else %}fail{% endif %}">
+        {% if c.result == 'pass' %}✓ pass{% else %}✗ {{ c.result }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="pagination" id="pagination">
+  <button id="btn-prev" onclick="goPage(curPage - 1)">‹ Prev</button>
+  <span class="page-info" id="page-info"></span>
+  <button id="btn-next" onclick="goPage(curPage + 1)">Next ›</button>
+</div>
+</div>
+
+<script>
+const allRows = Array.from(document.querySelectorAll('#result-table tbody tr'));
+let filteredRows = allRows.slice();
+let currentFilter = 'all';
+let curPage = 1;
+let pageSize = 20;
+
+function setFilter(f) {
+  currentFilter = f;
+  ['all','fail','pass'].forEach(k => document.getElementById('btn-'+k).classList.toggle('active', k===f));
+  onFilterChange();
+}
+
+function onFilterChange() {
+  const kw = document.getElementById('search').value.toLowerCase();
+  filteredRows = allRows.filter(tr => {
+    const result = tr.dataset.result;
+    const matchFilter = currentFilter === 'all' ||
+                        (currentFilter === 'fail' && result !== 'pass') ||
+                        (currentFilter === 'pass' && result === 'pass');
+    const matchSearch = !kw || tr.textContent.toLowerCase().includes(kw);
+    return matchFilter && matchSearch;
+  });
+  curPage = 1;
+  render();
+}
+
+function onPageSizeChange() {
+  pageSize = Number(document.getElementById('page-size').value);
+  curPage = 1;
+  render();
+}
+
+function goPage(p) {
+  const total = Math.ceil(filteredRows.length / pageSize) || 1;
+  curPage = Math.max(1, Math.min(p, total));
+  render();
+}
+
+function render() {
+  const total = Math.ceil(filteredRows.length / pageSize) || 1;
+  const start = (curPage - 1) * pageSize;
+  const end   = start + pageSize;
+  const visible = new Set(filteredRows.slice(start, end));
+  const tbody = document.querySelector('#result-table tbody');
+  let noResults = document.getElementById('no-results-row');
+  if (filteredRows.length === 0) {
+    if (!noResults) {
+      noResults = document.createElement('tr');
+      noResults.id = 'no-results-row';
+      noResults.innerHTML = '<td colspan="5" style="text-align:center;color:#aaa;padding:20px;">No results found</td>';
+      tbody.appendChild(noResults);
+    }
+    noResults.style.display = '';
+  } else {
+    if (noResults) noResults.style.display = 'none';
+  }
+  allRows.forEach(tr => {
+    tr.style.display = visible.has(tr) ? '' : 'none';
+  });
+  document.getElementById('page-info').textContent = ` ${curPage} / ${total} `;
+  document.getElementById('btn-prev').disabled = curPage === 1;
+  document.getElementById('btn-next').disabled = curPage === total;
+}
+
+render();
+</script>
+</body>
+</html>

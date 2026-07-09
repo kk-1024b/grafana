@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>{{ platform }} / {{ os }} / {{ arch }} — Overview</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f7fa; padding: 24px; font-size: 14px; color: #333; }
+.back { display: inline-block; margin-bottom: 16px; color: #1a5fb4; text-decoration: none; font-size: 13px; }
+.back:hover { text-decoration: underline; }
+.header { background: #fff; border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.1); display: flex; align-items: center; gap: 16px; }
+.header h1 { font-size: 17px; font-weight: 600; }
+.pill { padding: 4px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; background: #e9ecef; color: #555; margin-left: auto; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.panel { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); overflow: hidden; }
+.panel.charts { display: flex; flex-direction: column; }
+.chart-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.chart-wrap { flex: 1; padding: 14px 16px; position: relative; min-height: 0; }
+.chart-wrap canvas { position: absolute; inset: 14px 16px; }
+.chart-sep { height: 1px; background: #eaecf0; flex-shrink: 0; }
+.panel-title { font-size: 13px; font-weight: 600; color: #555; padding: 11px 16px; border-bottom: 1px solid #eaecf0; flex-shrink: 0; }
+.controls { padding: 10px 12px; border-bottom: 1px solid #eaecf0; }
+.controls input { padding: 6px 10px; border: 1px solid #dde1e7; border-radius: 5px; font-size: 13px; width: 100%; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f0f2f5; font-weight: 700; padding: 9px 12px; text-align: left; font-size: 13px; color: #333; border-bottom: 2px solid #dde1e7; white-space: nowrap; }
+th.num { width: 48px; text-align: center; }
+th.center { text-align: center; }
+td { padding: 5px 12px; border-bottom: 1px solid #eaecf0; font-size: 13px; cursor: pointer; }
+td.num { text-align: center; color: #888; }
+td.center { text-align: center; }
+td.rate { text-align: center; font-weight: 600; }
+td.rate.good { color: #1a6632; }
+td.rate.warn { color: #856404; }
+td.rate.bad  { color: #842029; }
+tr:hover td { background: #f8f9fa; }
+.pagination { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid #eaecf0; font-size: 13px; color: #555; }
+.pagination button { padding: 4px 12px; border: 1px solid #dde1e7; border-radius: 5px; background: #fff; cursor: pointer; font-size: 12px; }
+.pagination button:hover:not(:disabled) { background: #f0f2f5; }
+.pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination .page-info { margin: 0 4px; }
+.chart-wrap { padding: 14px 16px; }
+.chart-sep { height: 1px; background: #eaecf0; }
+</style>
+</head>
+<body>
+
+<a class="back" href="/">← Back to Dashboard</a>
+
+<div class="header">
+  <h1>{{ platform }} / {{ os }} / {{ arch }}</h1>
+  <span class="pill">{{ runs|length }} runs</span>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <div class="panel-title">Catch2 Daily Test Result</div>
+    <div class="controls">
+      <input type="text" id="search" placeholder="Search..." oninput="onSearch()">
+    </div>
+    <table id="run-table">
+      <thead>
+        <tr>
+          <th class="num">#</th>
+          <th>time</th>
+          <th class="center">pass</th>
+          <th class="center">total</th>
+          <th class="center">pass_rate(%)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in runs %}
+        <tr onclick="window.open('/detail/{{ platform }}/{{ r.id }}','_blank')">
+          <td class="num">{{ loop.index }}</td>
+          <td>{{ r.time_cst }}</td>
+          <td class="center">{{ r.pass }}</td>
+          <td class="center">{{ r.total }}</td>
+          <td class="rate {% if r.pass_rate == 100.0 %}good{% else %}bad{% endif %}">{{ r.pass_rate }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pagination">
+      <button id="btn-prev" onclick="goPage(curPage-1)">&lsaquo; Prev</button>
+      <span class="page-info" id="page-info"></span>
+      <button id="btn-next" onclick="goPage(curPage+1)">Next &rsaquo;</button>
+    </div>
+  </div>
+
+  <div class="panel charts">
+    <div class="chart-section">
+      <div class="panel-title">pass_rate(%)</div>
+      <div class="chart-wrap"><canvas id="chart-rate"></canvas></div>
+    </div>
+    <div class="chart-sep"></div>
+    <div class="chart-section">
+      <div class="panel-title">Pass &amp; Total Case Num</div>
+      <div class="chart-wrap"><canvas id="chart-count"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const allRows = Array.from(document.querySelectorAll('#run-table tbody tr'));
+let filteredRows = allRows.slice();
+let curPage = 1;
+const pageSize = 20;
+
+function onSearch() {
+  const kw = document.getElementById('search').value.toLowerCase();
+  filteredRows = allRows.filter(tr => !kw || tr.textContent.toLowerCase().includes(kw));
+  curPage = 1;
+  render();
+}
+
+function goPage(p) {
+  const total = Math.ceil(filteredRows.length / pageSize) || 1;
+  curPage = Math.max(1, Math.min(p, total));
+  render();
+}
+
+function render() {
+  const total = Math.ceil(filteredRows.length / pageSize) || 1;
+  const start = (curPage - 1) * pageSize;
+  const visible = new Set(filteredRows.slice(start, start + pageSize));
+  allRows.forEach(tr => { tr.style.display = visible.has(tr) ? '' : 'none'; });
+  document.getElementById('page-info').textContent = ` ${curPage} / ${total} `;
+  document.getElementById('btn-prev').disabled = curPage === 1;
+  document.getElementById('btn-next').disabled = curPage === total;
+}
+
+render();
+
+const leftPanel  = document.querySelector('.grid > .panel:not(.charts)');
+const rightPanel = document.querySelector('.panel.charts');
+
+// Compute height as if left panel always has 20 rows
+const panelTitle = leftPanel.querySelector('.panel-title');
+const controls   = leftPanel.querySelector('.controls');
+const thead      = leftPanel.querySelector('thead tr');
+const firstTd    = leftPanel.querySelector('tbody tr') || thead;
+const pagination = leftPanel.querySelector('.pagination');
+const rowH = firstTd.offsetHeight || 29;
+const targetH = panelTitle.offsetHeight + controls.offsetHeight
+              + thead.offsetHeight + rowH * 20 + pagination.offsetHeight;
+rightPanel.style.height = targetH + 'px';
+</script>
+
+<script src="/static/js/chart.umd.min.js"></script>
+<script>
+const chartData = {{ chart_runs | tojson }};
+const labels    = chartData.map(r => r.time_cst.slice(5, 10).replace('-', '/'));
+const rateVals  = chartData.map(r => r.pass_rate);
+const passVals  = chartData.map(r => r.pass);
+const totalVals = chartData.map(r => r.total);
+
+const baseOpts = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: false,
+  plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { maxTicksLimit: 8, font: { size: 10 }, maxRotation: 30 } },
+    y: { ticks: { font: { size: 10 } } }
+  }
+};
+
+new Chart(document.getElementById('chart-rate'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'pass_rate',
+      data: rateVals,
+      borderColor: '#2ca02c',
+      backgroundColor: 'rgba(44,160,44,0.08)',
+      borderWidth: 1.5,
+      pointRadius: 2,
+      tension: 0.1
+    }]
+  },
+  options: baseOpts
+});
+
+new Chart(document.getElementById('chart-count'), {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [
+      {
+        label: 'pass',
+        data: passVals,
+        borderColor: '#2ca02c',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.1
+      },
+      {
+        label: 'total',
+        data: totalVals,
+        borderColor: '#e6b800',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        pointRadius: 2,
+        tension: 0.1
+      }
+    ]
+  },
+  options: baseOpts
+});
+</script>
+</body>
+</html>
