@@ -25,7 +25,7 @@ def utc_to_cst(s):
 
 
 PIVOT_SQL = """
-SELECT r.platform, r.os, r.arch,
+SELECT base.platform, base.os, base.arch,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours','-9 day') THEN r.id END) AS d9_id,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours','-9 day') THEN r.pass||'/'||r.total END) AS d9,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours','-8 day') THEN r.id END) AS d8_id,
@@ -46,16 +46,20 @@ SELECT r.platform, r.os, r.arch,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours','-1 day') THEN r.pass||'/'||r.total END) AS d1,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours')          THEN r.id END) AS d0_id,
   MAX(CASE WHEN date(r.time,'+8 hours')=date('now','+8 hours')          THEN r.pass||'/'||r.total END) AS d0
-FROM runs r
-JOIN (
-    SELECT platform, os, arch, date(time,'+8 hours') AS day, MAX(time) AS latest_time
-    FROM runs
-    GROUP BY platform, os, arch, date(time,'+8 hours')
-) l ON r.platform=l.platform AND r.os=l.os AND r.arch=l.arch
-    AND date(r.time,'+8 hours')=l.day AND r.time=l.latest_time
-WHERE date(r.time,'+8 hours') >= date('now', '+8 hours', '-9 day')
-GROUP BY r.platform, r.os, r.arch
-ORDER BY r.platform, r.os, r.arch
+FROM (SELECT DISTINCT platform, os, arch FROM runs) base
+LEFT JOIN (
+    SELECT r.*
+    FROM runs r
+    JOIN (
+        SELECT platform, os, arch, date(time,'+8 hours') AS day, MAX(time) AS latest_time
+        FROM runs
+        GROUP BY platform, os, arch, date(time,'+8 hours')
+    ) l ON r.platform=l.platform AND r.os=l.os AND r.arch=l.arch
+        AND date(r.time,'+8 hours')=l.day AND r.time=l.latest_time
+    WHERE date(r.time,'+8 hours') >= date('now', '+8 hours', '-9 day')
+) r ON r.platform=base.platform AND r.os=base.os AND r.arch=base.arch
+GROUP BY base.platform, base.os, base.arch
+ORDER BY base.platform, base.os, base.arch
 """
 
 
