@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CI 测试看板系统 · 三代演进历程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --border:    #2a2d3e;
+    --accent:    #5b6ef5;
+    --accent2:   #38bdf8;
+    --accent3:   #34d399;
+    --warn:      #f59e0b;
+    --danger:    #f87171;
+    --text:      #e2e8f0;
+    --muted:     #7c8398;
+    --radius:    12px;
+  }
+
+  html, body { width: 100%; height: 100%; background: var(--bg); font-family: 'Segoe UI', system-ui, sans-serif; color: var(--text); overflow: hidden; }
+
+  /* ── DECK ── */
+  .deck { width: 100%; height: 100%; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    padding: 48px 72px;
+    opacity: 0; pointer-events: none;
+    transform: translateX(60px);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .slide.active {
+    opacity: 1; pointer-events: auto; transform: translateX(0);
+  }
+  .slide.exit {
+    opacity: 0; transform: translateX(-60px);
+  }
+
+  /* ── NAV BAR ── */
+  .nav {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(26,29,39,.85); backdrop-filter: blur(12px);
+    border: 1px solid var(--border); border-radius: 40px;
+    padding: 10px 20px; z-index: 100;
+  }
+  .nav button {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 18px; line-height: 1; padding: 4px 8px; border-radius: 8px;
+    transition: color .2s, background .2s;
+  }
+  .nav button:hover { color: var(--text); background: var(--border); }
+  .nav button:disabled { opacity: .3; cursor: default; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); transition: background .2s, transform .2s; cursor: pointer; }
+  .dot.active { background: var(--accent); transform: scale(1.35); }
+  .slide-num { font-size: 12px; color: var(--muted); min-width: 36px; text-align: center; }
+
+  /* ── TYPOGRAPHY ── */
+  .label { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  h1 { font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800; line-height: 1.15; text-align: center; }
+  h2 { font-size: clamp(1.4rem, 2.5vw, 2.2rem); font-weight: 700; line-height: 1.2; }
+  h3 { font-size: 1.1rem; font-weight: 600; }
+  .subtitle { font-size: 1.1rem; color: var(--muted); margin-top: 16px; text-align: center; }
+  .muted { color: var(--muted); }
+
+  /* ── LAYOUT HELPERS ── */
+  .row { display: flex; gap: 24px; width: 100%; align-items: flex-start; }
+  .col { flex: 1; }
+  .center { text-align: center; }
+  .mt { margin-top: 20px; }
+  .mt-sm { margin-top: 10px; }
+  .slide-header { margin-bottom: 36px; align-self: flex-start; width: 100%; }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 24px;
+  }
+  .card + .card { margin-top: 14px; }
+
+  /* ── BADGE / CHIP ── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px;
+    letter-spacing: .04em;
+  }
+  .chip-blue  { background: rgba(91,110,245,.18); color: #818cf8; border: 1px solid rgba(91,110,245,.35); }
+  .chip-green { background: rgba(52,211,153,.15); color: #34d399; border: 1px solid rgba(52,211,153,.3); }
+  .chip-amber { background: rgba(245,158,11,.15); color: #fbbf24; border: 1px solid rgba(245,158,11,.3); }
+  .chip-red   { background: rgba(248,113,113,.15); color: #f87171; border: 1px solid rgba(248,113,113,.3); }
+  .chip-cyan  { background: rgba(56,189,248,.15); color: #38bdf8; border: 1px solid rgba(56,189,248,.3); }
+
+  /* ── VERSION BADGES ── */
+  .v-badge {
+    display: inline-block; font-size: 13px; font-weight: 700; padding: 4px 14px;
+    border-radius: 99px; margin-right: 8px;
+  }
+  .v1 { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+  .v2 { background: rgba(56,189,248,.2); color: #38bdf8; border: 1px solid rgba(56,189,248,.4); }
+  .v3 { background: rgba(52,211,153,.2); color: #34d399; border: 1px solid rgba(52,211,153,.4); }
+
+  /* ── ARCH BOX ── */
+  .arch {
+    background: #0b0e18; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px 24px; font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px; line-height: 1.8; color: #94a3b8; white-space: pre;
+  }
+  .arch .hi  { color: var(--accent2); }
+  .arch .ok  { color: var(--accent3); }
+  .arch .warn{ color: var(--warn); }
+  .arch .dim { color: #475569; }
+
+  /* ── TABLE ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--border); color: var(--muted); font-weight: 600; text-align: left; padding: 8px 12px; letter-spacing: .04em; font-size: 11px; text-transform: uppercase; }
+  td { padding: 9px 12px; border-bottom: 1px solid rgba(42,45,62,.7); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.025); }
+
+  /* ── FLOW ARROW ── */
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .flow-node {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; font-weight: 600;
+  }
+  .flow-arrow { color: var(--muted); font-size: 18px; }
+
+  /* ── TIMELINE ── */
+  .timeline { display: flex; flex-direction: column; gap: 0; width: 100%; }
+  .tl-item { display: flex; gap: 20px; align-items: flex-start; }
+  .tl-line { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+  .tl-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .tl-bar { width: 2px; flex: 1; background: var(--border); margin: 4px 0; min-height: 32px; }
+  .tl-content { flex: 1; padding-bottom: 28px; }
+
+  /* ── STAT TILES ── */
+  .stats { display: flex; gap: 16px; }
+  .stat {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; text-align: center;
+  }
+  .stat-val { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+  .stat-lbl { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* ── PROS / CONS ── */
+  .pros-cons { display: flex; gap: 14px; }
+  .pros, .cons { flex: 1; border-radius: var(--radius); padding: 14px 18px; }
+  .pros { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.25); }
+  .cons { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); }
+  .pros h4 { color: var(--accent3); margin-bottom: 8px; font-size: 13px; }
+  .cons h4 { color: var(--danger); margin-bottom: 8px; font-size: 13px; }
+  .pros li, .cons li { font-size: 13px; color: var(--muted); margin-left: 14px; margin-top: 4px; }
+
+  /* ── HIGHLIGHT TEXT ── */
+  .hl-blue  { color: var(--accent2); font-weight: 700; }
+  .hl-green { color: var(--accent3); font-weight: 700; }
+  .hl-amber { color: var(--warn);    font-weight: 700; }
+
+  /* ── SLIDE SPECIFIC ── */
+  .title-slide { background: radial-gradient(ellipse at 60% 40%, rgba(91,110,245,.12) 0%, transparent 65%); }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; width: 100%; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; width: 100%; }
+
+  /* ── PROGRESS BAR ── */
+  .progress-bar {
+    position: fixed; top: 0; left: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .35s ease; z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<div class="progress-bar" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- ─────────────────────────────── SLIDE 1: TITLE ─────────────────────────────── -->
+  <div class="slide title-slide active">
+    <div class="label">项目分享</div>
+    <h1>CI 测试看板系统<br><span style="color:var(--accent)">三代演进历程</span></h1>
+    <p class="subtitle">从 Grafana 三容器 → 单容器合并 → 自研 Flask 替代<br>
+      <span style="color:var(--muted);font-size:.95rem;">2025.09 &nbsp;—&nbsp; 2026.07</span>
+    </p>
+    <div class="stats mt" style="width:580px;max-width:100%">
+      <div class="stat"><div class="stat-val" style="color:var(--warn)">v1</div><div class="stat-lbl">grafana_nginx<br>2025.09</div></div>
+      <div class="stat"><div class="stat-val" style="color:var(--accent2)">v2</div><div class="stat-lbl">grafana_v2.0<br>2026.06</div></div>
+      <div class="stat"><div class="stat-val" style="color:var(--accent3)">v3</div><div class="stat-lbl">grafana_v3.0<br>2026.07</div></div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 2: 背景 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">背景</div>
+      <h2>为什么要做这个系统？</h2>
+    </div>
+    <div class="grid3" style="align-items:stretch">
+      <div class="card">
+        <div style="font-size:2rem;margin-bottom:12px;">📊</div>
+        <h3 style="margin-bottom:8px;">测试结果可视化</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;">
+          CI 流水线跑完 Catch2 单测后，需要一个看板实时汇总 <strong style="color:var(--text)">通过率 / 失败用例</strong>，替代人工翻日志
+        </p>
+      </div>
+      <div class="card">
+        <div style="font-size:2rem;margin-bottom:12px;">🖥️</div>
+        <h3 style="margin-bottom:8px;">多平台设备</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;">
+          需同时跟踪 <strong style="color:var(--text)">tx82 / tx8 / tx5</strong> 等多种 SoC，不同 OS 和架构，需要统一的横向对比视图
+        </p>
+      </div>
+      <div class="card">
+        <div style="font-size:2rem;margin-bottom:12px;">🔒</div>
+        <h3 style="margin-bottom:8px;">离线 / 内网部署</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;">
+          实验室环境无外网，所有依赖必须打包进 Docker 镜像，支持 <strong style="color:var(--text)">docker export → import</strong> 离线传输
+        </p>
+      </div>
+    </div>
+    <div class="card mt" style="width:100%">
+      <div class="flow">
+        <div class="flow-node">🔧 CI 设备</div>
+        <div class="flow-arrow">─ PUT JSON/CSV ──▶</div>
+        <div class="flow-node">📥 接收服务</div>
+        <div class="flow-arrow">──▶</div>
+        <div class="flow-node">⚙️ 解析写库</div>
+        <div class="flow-arrow">──▶</div>
+        <div class="flow-node">📈 可视化看板</div>
+        <div class="flow-arrow">──▶</div>
+        <div class="flow-node">👁️ 浏览器</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 3: V1 概览 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第一代 · 2025.09</div>
+      <h2><span class="v1">v1</span> grafana_nginx &nbsp;— 三容器分离架构</h2>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <div class="col" style="flex:1.1">
+        <div class="arch"><span class="dim">┌─── 宿主机 ──────────────────────────────┐
+│                                         │
+│  </span><span class="hi">docker: test_nginx1.28</span><span class="dim">  (9699)         │
+│    nginx WebDAV PUT ← CI 上传 CSV       │
+│    nginx GET       → Grafana 读取 CSV   │
+│                                         │
+│  </span><span class="hi">docker: dt_watcher</span><span class="dim">               │
+│    Python 监听 /data/details/sources/   │
+│    → 解析 CSV → 追加 catch2Result.csv  │
+│    → 生成 HTML 报告                     │
+│                                         │
+│  </span><span class="hi">docker: dt_dashboards</span><span class="dim">  (9696)       │
+│    Grafana + Infinity 插件              │
+│    读取 catch2Result.csv                │
+│                                         │
+│  </span><span class="ok">/home/kk/catch2_data/data/</span><span class="dim">  共享挂载    │
+└─────────────────────────────────────────┘</span></div>
+      </div>
+      <div class="col">
+        <div class="pros-cons" style="flex-direction:column;gap:12px">
+          <div class="pros">
+            <h4>✅ 优点</h4>
+            <ul>
+              <li>职责分离清晰</li>
+              <li>Grafana 功能丰富</li>
+              <li>快速验证可行性</li>
+            </ul>
+          </div>
+          <div class="cons">
+            <h4>❌ 问题</h4>
+            <ul>
+              <li>三容器独立维护，顺序依赖启动</li>
+              <li>三个挂载路径不一致（/data、/opt/catch2_data…）</li>
+              <li>CSV 格式脆弱，无时区语义</li>
+              <li>Grafana dashboard <strong>不持久化</strong>，容器重建即丢失</li>
+              <li>Infinity 插件需要外网安装</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card mt-sm" style="font-size:13px;">
+          <div style="margin-bottom:6px;"><span class="chip chip-amber">数据格式</span> CSV</div>
+          <div style="margin-bottom:6px;"><span class="chip chip-amber">存储</span> CSV 文件 + HTML 报告文件</div>
+          <div><span class="chip chip-amber">容器数</span> 3 个独立容器</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 4: V2 概览 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第二代 · 2026.06</div>
+      <h2><span class="v2">v2</span> grafana_v2.0 &nbsp;— 单容器 + SQLite</h2>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <div class="col" style="flex:1.1">
+        <div class="arch"><span class="dim">┌─── Docker 容器 </span><span class="hi">dt_all</span><span class="dim"> ────────────────┐
+│                                          │
+│  supervisord（进程守护）                │
+│  ├── </span><span class="hi">nginx</span><span class="dim">      8080 → 宿主 9698       │
+│  │   PUT /details/sources/ ← CI CSV     │
+│  │   GET /data/            → Grafana   │
+│  │                                      │
+│  ├── </span><span class="hi">grafana-server</span><span class="dim"> 3000 → 宿主 9696   │
+│  │   frser-sqlite-datasource 插件       │
+│  │                                      │
+│  ├── </span><span class="ok">python watcher (app_catch2/)</span><span class="dim">        │
+│  │   监听 /data/details/catch2/         │
+│  │   CSV + JSON → SQLite               │
+│  │                                      │
+│  └── </span><span class="ok">python watcher (app_bm/)</span><span class="dim">           │
+│      Benchmark 结果处理                 │
+│                                          │
+│  </span><span class="ok">/data/</span><span class="dim">  ← 唯一挂载点                  │
+└──────────────────────────────────────────┘</span></div>
+      </div>
+      <div class="col">
+        <div class="card" style="font-size:13px;margin-bottom:12px">
+          <h3 style="margin-bottom:10px;color:var(--accent2)">核心改进</h3>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div>🎯 <strong>三容器合并为一</strong>，supervisord 管理三进程</div>
+            <div>💾 <strong>CSV → SQLite</strong>，引入 db.py 结构化存储</div>
+            <div>🔗 <strong>挂载点统一</strong>为单一 <code style="color:var(--accent2)">/data/</code></div>
+            <div>📦 <strong>整体 tar 打包</strong>，支持离线 docker import</div>
+            <div>➕ <strong>新增 Benchmark 支持</strong>（app_bm/）</div>
+            <div>📄 <strong>JSON 格式并行支持</strong>（同时保留 CSV）</div>
+          </div>
+        </div>
+        <div class="pros-cons" style="flex-direction:column;gap:10px">
+          <div class="cons">
+            <h4>❌ 残留问题</h4>
+            <ul>
+              <li>Grafana 镜像体积 <strong>1~2 GB</strong></li>
+              <li>Dashboard 仍不持久化（需手动重配）</li>
+              <li>构建依赖外网（Grafana apt 源）</li>
+              <li>单平台设计，runs 表无 platform 字段</li>
+              <li>时区语义不明确，由 Grafana 自行处理</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 5: V2 数据库 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第二代 · 数据层</div>
+      <h2><span class="v2">v2</span> 从 CSV 到 SQLite</h2>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h3 style="color:var(--warn);margin-bottom:12px;">v1 CSV 方案</h3>
+        <div class="arch" style="font-size:12px"><span class="dim"># catch2Result.csv（汇总）</span>
+<span class="warn">time,pass,total</span>
+2026-06-23 10:00:00,38,40
+2026-06-24 09:30:00,40,40
+
+<span class="dim"># /details/html/report-*.html（明细）</span>
+<span class="warn">静态 HTML 文件，watcher 重启后重建</span></div>
+        <div class="cons" style="margin-top:12px">
+          <h4>缺陷</h4>
+          <ul>
+            <li>无法按字段查询</li>
+            <li>重启全量重建，历史易丢</li>
+            <li>并发写 CSV 不安全</li>
+          </ul>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;color:var(--muted);font-size:28px;padding:0 8px">→</div>
+      <div class="col">
+        <h3 style="color:var(--accent2);margin-bottom:12px;">v2 SQLite 方案</h3>
+        <div class="arch" style="font-size:12px"><span class="dim">-- /data/test_results.db</span>
+
+<span class="ok">runs</span>(id, time TEXT, pass INT, total INT)
+
+<span class="ok">test_cases</span>(id,
+  run_id → runs.id,
+  num, module, binary,
+  case_name, result TEXT)</div>
+        <div class="pros" style="margin-top:12px">
+          <h4>改进</h4>
+          <ul>
+            <li>结构化查询，关联明细</li>
+            <li>重启保留历史，run_exists() 去重</li>
+            <li>Grafana SQLite 插件直读</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="card mt" style="font-size:13px;width:100%">
+      <strong style="color:var(--muted);">数据流</strong>&nbsp;
+      <span class="flow" style="display:inline-flex;margin-top:6px">
+        <span class="flow-node">CI PUT testResult.csv</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-node">nginx → /data/details/sources/</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-node">watcher 解析</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-node">db.insertResult()</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-node">Grafana SQLite 读取</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 6: V3 概览 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第三代 · 2026.07</div>
+      <h2><span class="v3">v3</span> grafana_v3.0 &nbsp;— 自研 Flask 替换 Grafana</h2>
+    </div>
+    <div class="row" style="align-items:stretch">
+      <div class="col" style="flex:1.1">
+        <div class="arch"><span class="dim">┌─── Docker 容器 </span><span class="hi">dt_v3</span><span class="dim"> ─────────────────┐
+│                                         │
+│  supervisord（三进程）                  │
+│  ├── </span><span class="hi">nginx</span><span class="dim">      8080 → 宿主 9698      │
+│  │   PUT /details/ ← CI JSON           │
+│  │                                     │
+│  ├── </span><span class="ok">python watcher</span><span class="dim">                    │
+│  │   轮询 /data/details/catch2/        │
+│  │   JSON → SQLite（按 platform 分库） │
+│  │   run_exists() 去重                 │
+│  │                                     │
+│  └── </span><span class="ok">Flask (web.py)</span><span class="dim">  3000 → 9696    │
+│      GET /           pivot 汇总表      │
+│      GET /detail/    单次测试明细      │
+│      GET /platform/  历史趋势+图表     │
+│      GET /api/detail 失败用例 JSON     │
+│                                         │
+│  </span><span class="ok">/data/platforms/&lt;platform&gt;.db</span><span class="dim">         │
+└─────────────────────────────────────────┘</span></div>
+      </div>
+      <div class="col">
+        <div class="card" style="margin-bottom:12px">
+          <div class="stats" style="gap:10px">
+            <div class="stat" style="padding:14px">
+              <div class="stat-val" style="color:var(--accent3);font-size:1.8rem">~200<span style="font-size:1rem">MB</span></div>
+              <div class="stat-lbl">镜像体积<br><span style="color:var(--muted);font-size:11px">v2: 1~2GB</span></div>
+            </div>
+            <div class="stat" style="padding:14px">
+              <div class="stat-val" style="color:var(--accent3);font-size:1.8rem">3</div>
+              <div class="stat-lbl">进程数<br><span style="color:var(--muted);font-size:11px">v2: 4</span></div>
+            </div>
+            <div class="stat" style="padding:14px">
+              <div class="stat-val" style="color:var(--accent3);font-size:1.8rem">0</div>
+              <div class="stat-lbl">外网依赖<br><span style="color:var(--muted);font-size:11px">v2: Grafana apt</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="pros">
+          <h4>✅ 核心改进</h4>
+          <ul>
+            <li>去掉 Grafana，<strong>镜像缩减 90%</strong></li>
+            <li>多平台，每个 platform 独立 .db</li>
+            <li>看板逻辑随代码版本管理</li>
+            <li><code>docker cp *.html</code> 热更新，无需重启</li>
+            <li>UTC 存库，CST 展示，时区明确</li>
+            <li>JSON 唯一格式，去掉 CSV 解析复杂度</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 7: V3 多平台设计 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第三代 · 多平台设计</div>
+      <h2><span class="v3">v3</span> 多平台 &amp; Pivot 汇总表</h2>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h3 style="color:var(--muted);margin-bottom:10px;font-size:14px;text-transform:uppercase;letter-spacing:.08em">v2 — 单平台</h3>
+        <div class="arch" style="font-size:12px"><span class="dim">runs(id, time, </span><span class="warn">pass, total</span><span class="dim">)
+                ↑
+    test_results.db（单库）
+    所有设备数据混在一起</span></div>
+        <div class="cons" style="margin-top:10px">
+          <h4>问题</h4>
+          <ul><li>无法区分不同设备的结果</li><li>横向对比困难</li></ul>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;color:var(--muted);font-size:28px;padding:0 8px">→</div>
+      <div class="col" style="flex:1.4">
+        <h3 style="color:var(--accent3);margin-bottom:10px;font-size:14px;text-transform:uppercase;letter-spacing:.08em">v3 — 多平台</h3>
+        <div class="arch" style="font-size:12px"><span class="dim">runs(id, time, </span><span class="ok">platform, os, arch,</span><span class="dim"> pass, total)
+             ↑
+/data/platforms/
+  ├── </span><span class="ok">tx82.db</span><span class="dim">
+  ├── </span><span class="ok">tx8.db</span><span class="dim">
+  └── </span><span class="ok">tx5.db</span></div>
+        <div class="pros" style="margin-top:10px">
+          <h4>改进</h4>
+          <ul><li>新平台自动建库，无需改配置</li><li>首页遍历 *.db 合并为 pivot 表</li></ul>
+        </div>
+      </div>
+    </div>
+    <div class="card mt" style="width:100%;overflow-x:auto">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px;font-weight:600;">首页 Pivot 表效果（行=平台，列=日期）</div>
+      <table style="font-size:12px;min-width:560px">
+        <thead>
+          <tr>
+            <th>platform</th><th>os</th><th>arch</th>
+            <th>7-06</th><th>7-07</th><th>7-08</th><th>7-09</th><th>7-10</th><th>7-11</th><th>7-12</th><th>7-13</th><th>7-14</th><th style="color:var(--accent3)">今天</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>tx82</td><td>linux</td><td>x86_64</td>
+            <td><span class="chip chip-green" style="font-size:11px">93/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">98/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">100/100</span></td>
+            <td><span class="chip chip-red" style="font-size:11px">87/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">95/100</span></td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-green" style="font-size:11px">99/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">100/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">100/100</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">98/100</span></td>
+          </tr>
+          <tr>
+            <td>tx8</td><td>kylin</td><td>amd64</td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-green" style="font-size:11px">80/80</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">80/80</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">78/80</span></td>
+            <td style="color:var(--muted)">—</td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-green" style="font-size:11px">80/80</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">80/80</span></td>
+            <td><span class="chip chip-amber" style="font-size:11px">75/80</span></td>
+            <td style="color:var(--muted)">—</td>
+          </tr>
+          <tr>
+            <td>tx5</td><td>ubuntu</td><td>arm64</td>
+            <td style="color:var(--muted)">—</td>
+            <td style="color:var(--muted)">—</td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-green" style="font-size:11px">60/60</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">60/60</span></td>
+            <td><span class="chip chip-green" style="font-size:11px">59/60</span></td>
+            <td style="color:var(--muted)">—</td>
+            <td><span class="chip chip-green" style="font-size:11px">60/60</span></td>
+            <td style="color:var(--muted)">—</td>
+            <td style="color:var(--muted)">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 8: V3 三个页面 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第三代 · 功能页面</div>
+      <h2><span class="v3">v3</span> Flask 三页面设计</h2>
+    </div>
+    <div class="grid3" style="align-items:stretch">
+      <div class="card" style="border-top:3px solid var(--accent)">
+        <div class="chip chip-blue" style="margin-bottom:12px">GET /</div>
+        <h3 style="margin-bottom:8px;">首页 Pivot 汇总</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;margin-bottom:12px">
+          读所有 <code>*.db</code>，生成 10 天 × 多平台交叉表。<br>
+          每格显示 <strong style="color:var(--text)">pass/total</strong>，点击跳转失败用例 modal。
+        </p>
+        <div style="font-size:12px;color:var(--muted)">
+          <div>• 行 = platform / os / arch</div>
+          <div>• 列 = 最近 10 天（CST）</div>
+          <div>• 每天只取最新一次运行</div>
+          <div>• 无数据平台依然显示（空行）</div>
+        </div>
+      </div>
+      <div class="card" style="border-top:3px solid var(--accent2)">
+        <div class="chip chip-cyan" style="margin-bottom:12px">GET /detail/&lt;platform&gt;/&lt;id&gt;</div>
+        <h3 style="margin-bottom:8px;">单次运行明细</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;margin-bottom:12px">
+          展示一次 CI 运行的 <strong style="color:var(--text)">全部测试用例</strong>，支持客户端分页（JS 控制显隐）。
+        </p>
+        <div style="font-size:12px;color:var(--muted)">
+          <div>• 列：num / module / binary / case / result</div>
+          <div>• pass/failed 颜色区分</div>
+          <div>• 时间展示 CST（utc_to_cst filter）</div>
+          <div>• 服务端渲染，无 API 请求</div>
+        </div>
+      </div>
+      <div class="card" style="border-top:3px solid var(--accent3)">
+        <div class="chip chip-green" style="margin-bottom:12px">GET /platform/&lt;p&gt;?os=&amp;arch=</div>
+        <h3 style="margin-bottom:8px;">平台历史趋势</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7;margin-bottom:12px">
+          左侧 <strong style="color:var(--text)">分页列表</strong>（所有历史），右侧 <strong style="color:var(--text)">Chart.js 折线图</strong>（近 60 天通过率趋势）。
+        </p>
+        <div style="font-size:12px;color:var(--muted)">
+          <div>• Chart.js 本地托管，无外网</div>
+          <div>• 图表数据 JSON blob 嵌 &lt;script&gt;</div>
+          <div>• 通过率 = pass / total × 100%</div>
+          <div>• API：/api/detail 返回失败用例 JSON</div>
+        </div>
+      </div>
+    </div>
+    <div class="card mt" style="width:100%;font-size:13px">
+      <strong style="color:var(--muted)">热更新机制</strong><span style="margin-left:12px">
+        模板 <code>.html</code> 文件 → <code>docker cp</code> 即生效（Flask 每次请求读文件）&nbsp;|&nbsp;
+        <code>web.py</code> 修改 → <code>docker cp</code> + kill Flask → supervisord 自动重启，&lt;3s 恢复
+      </span>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 9: 时区设计 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">第三代 · 技术细节</div>
+      <h2>时区处理 &amp; 数据格式收敛</h2>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h3 style="margin-bottom:12px;color:var(--accent2)">UTC 存库 / CST 展示</h3>
+        <div class="arch" style="font-size:12px"><span class="dim"># DB 存储（UTC）</span>
+<span class="ok">time = "2026-07-09T10:00:00Z"</span>
+
+<span class="dim"># SQL 查询分组（+8h 偏移）</span>
+<span class="hi">date(time, '+8 hours')</span>
+
+<span class="dim"># Flask 列头</span>
+<span class="hi">datetime.now(CST).date()</span>
+
+<span class="dim"># Jinja2 模板渲染</span>
+<span class="hi">{{ run.time | utc_to_cst }}</span></div>
+        <div class="pros" style="margin-top:10px">
+          <h4>好处</h4>
+          <ul>
+            <li>DB 时区语义明确，不依赖客户端</li>
+            <li>列头与 SQL 分组结果天然对齐</li>
+            <li>CST 与 UTC 换算只在展示层发生</li>
+          </ul>
+        </div>
+      </div>
+      <div class="col">
+        <h3 style="margin-bottom:12px;color:var(--accent3)">JSON 唯一格式（去掉 CSV）</h3>
+        <div class="arch" style="font-size:12px"><span class="dim">{
+  "</span><span class="ok">platform</span><span class="dim">": "tx82",
+  "</span><span class="ok">os</span><span class="dim">":       "linux",
+  "</span><span class="ok">arch</span><span class="dim">":     "x86_64",
+  "</span><span class="ok">time</span><span class="dim">":     "2026-07-09T10:00:00Z",
+  "summary": { "pass": 120, "total": 125 },
+  "results": [
+    { "num": 1, "case": "TestFoo", "result": "pass" },
+    { "num": 2, "case": "TestBar", "result": "FAILED" }
+  ]
+}</span></div>
+        <div class="pros" style="margin-top:10px">
+          <h4>好处</h4>
+          <ul>
+            <li>平台字段直接来自 JSON，无目录解析</li>
+            <li>删除 csv2html.py / tar.gz 处理逻辑</li>
+            <li>watcher 代码减少约 40%</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 10: 三代对比 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">横向对比</div>
+      <h2>三代核心指标对比</h2>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>维度</th>
+          <th><span class="v1">v1</span> grafana_nginx</th>
+          <th><span class="v2">v2</span> grafana_v2.0</th>
+          <th><span class="v3">v3</span> grafana_v3.0</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="muted" style="font-weight:600">仪表板</td>
+          <td>Grafana + Infinity</td>
+          <td>Grafana + SQLite 插件</td>
+          <td><span class="hl-green">自研 Flask</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">容器数</td>
+          <td><span class="hl-amber">3 独立容器</span></td>
+          <td><span class="hl-blue">1（4 进程）</span></td>
+          <td><span class="hl-green">1（3 进程）</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">数据格式</td>
+          <td><span class="hl-amber">CSV 唯一</span></td>
+          <td>CSV 主 + JSON 辅</td>
+          <td><span class="hl-green">JSON 唯一</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">存储</td>
+          <td>CSV 文件 + HTML 文件</td>
+          <td>SQLite（单库）</td>
+          <td><span class="hl-green">SQLite（per-platform）</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">多平台</td>
+          <td>❌</td>
+          <td>❌</td>
+          <td><span class="hl-green">✅ pivot 汇总表</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">镜像大小</td>
+          <td>多个独立镜像</td>
+          <td><span class="hl-amber">~1~2 GB</span></td>
+          <td><span class="hl-green">~200 MB</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">外网依赖</td>
+          <td>Grafana + Infinity</td>
+          <td><span class="hl-amber">Grafana apt + frser</span></td>
+          <td><span class="hl-green">仅 pip install flask</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">看板持久化</td>
+          <td>❌ 容器删除丢失</td>
+          <td>❌ 容器删除丢失</td>
+          <td><span class="hl-green">✅ 代码即配置</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">热更新</td>
+          <td>❌</td>
+          <td>❌</td>
+          <td><span class="hl-green">✅ docker cp 即生效</span></td>
+        </tr>
+        <tr>
+          <td class="muted" style="font-weight:600">时区处理</td>
+          <td>无明确规范</td>
+          <td>Grafana 层处理</td>
+          <td><span class="hl-green">UTC 存库 / CST 展示</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 11: 演进时间轴 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">演进历程</div>
+      <h2>Git 提交时间线</h2>
+    </div>
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-line">
+          <div class="tl-dot" style="background:var(--warn)"></div>
+          <div class="tl-bar"></div>
+        </div>
+        <div class="tl-content">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="v1">v1</span>
+            <span style="color:var(--muted);font-size:12px">2025.09.30 — 2025.10.09</span>
+          </div>
+          <div style="font-size:13px">grafana_nginx — 初版三容器：nginx WebDAV + Python watcher + Grafana Infinity；CSV 格式；首次验证可行性</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-line">
+          <div class="tl-dot" style="background:var(--accent2)"></div>
+          <div class="tl-bar"></div>
+        </div>
+        <div class="tl-content">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="v2">v2</span>
+            <span style="color:var(--muted);font-size:12px">2026.06.23 — 2026.07.07（14 个 commit）</span>
+          </div>
+          <div style="font-size:13px">
+            grafana_v2.0 — 单容器 supervisord；CSV→SQLite；新增 app_bm/ Benchmark；新增 JSON 格式支持；
+            DB rebuild 脚本；启动时备份+重建 DB；新增 <code>/details/tx82/</code> 路由
+          </div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-line">
+          <div class="tl-dot" style="background:var(--accent3)"></div>
+        </div>
+        <div class="tl-content">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="v3">v3</span>
+            <span style="color:var(--muted);font-size:12px">2026.07.09 — 2026.07.14（4 个 commit）</span>
+          </div>
+          <div style="font-size:13px">
+            grafana_v3.0 — Flask 替换 Grafana；多平台 per-platform SQLite；JSON 唯一格式；
+            UTC/CST 显式化；run_exists() 去重启动；pivot 汇总首页；Chart.js 历史折线图；热更新支持
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card mt" style="width:100%">
+      <div class="stats" style="gap:20px">
+        <div class="stat" style="padding:12px">
+          <div class="stat-val" style="color:var(--accent3);font-size:1.6rem">18</div>
+          <div class="stat-lbl">总提交数</div>
+        </div>
+        <div class="stat" style="padding:12px">
+          <div class="stat-val" style="color:var(--accent3);font-size:1.6rem">10<span style="font-size:1rem">mo</span></div>
+          <div class="stat-lbl">迭代周期</div>
+        </div>
+        <div class="stat" style="padding:12px">
+          <div class="stat-val" style="color:var(--accent3);font-size:1.6rem">90<span style="font-size:1rem">%</span></div>
+          <div class="stat-lbl">镜像体积缩减</div>
+        </div>
+        <div class="stat" style="padding:12px">
+          <div class="stat-val" style="color:var(--accent3);font-size:1.6rem">3→1</div>
+          <div class="stat-lbl">容器数（v1→v3）</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 12: 部署 ─────────────────────────────── -->
+  <div class="slide">
+    <div class="slide-header">
+      <div class="label">部署指南</div>
+      <h2>v3 快速部署</h2>
+    </div>
+    <div class="row">
+      <div class="col">
+        <h3 style="color:var(--accent2);margin-bottom:10px;font-size:14px">构建 &amp; 启动</h3>
+        <div class="arch" style="font-size:12px"><span class="dim"># 构建镜像</span>
+<span class="ok">docker build -t dt_v3:1.0 .</span>
+
+<span class="dim"># 启动</span>
+<span class="ok">docker run -d --restart=always \
+  --name dt_v3 \
+  -p 9696:3000 \
+  -p 9698:8080 \
+  -v /home/kk/catch2_data/data:/data \
+  dt_v3:1.0</span>
+
+<span class="dim"># 验证三进程</span>
+<span class="ok">docker exec dt_v3 supervisorctl status</span></div>
+      </div>
+      <div class="col">
+        <h3 style="color:var(--accent3);margin-bottom:10px;font-size:14px">CI 上传 &amp; 热更新</h3>
+        <div class="arch" style="font-size:12px"><span class="dim"># CI 推送测试结果</span>
+<span class="ok">curl -u user:pass123 -T result.json \
+  http://HOST:9698/details/\
+  2026-07-15_10-00-00/testResult.json</span>
+
+<span class="dim"># 热更新模板（无需重启）</span>
+<span class="ok">docker cp app_web/templates/index.html \
+  dt_v3:/app_web/templates/index.html</span>
+
+<span class="dim"># 热更新 web.py（supervisord 自动重启）</span>
+<span class="ok">docker cp app_web/web.py dt_v3:/app_web/web.py
+# kill Flask PID → supervisord 3s 内重启</span></div>
+      </div>
+      <div class="col">
+        <h3 style="color:var(--warn);margin-bottom:10px;font-size:14px">离线部署</h3>
+        <div class="arch" style="font-size:12px"><span class="dim"># 导出</span>
+<span class="ok">docker export dt_v3 -o dt_v3_1.0.tar</span>
+
+<span class="dim"># 目标机器加载</span>
+<span class="ok">docker import dt_v3_1.0.tar dt_v3:1.0</span>
+
+<span class="dim"># 启动（import 丢失 CMD，需手动指定）</span>
+<span class="ok">docker run -d --restart=always \
+  --name dt_v3 \
+  -p 9696:3000 -p 9698:8080 \
+  -v /your/data:/data \
+  dt_v3:1.0 \
+  /usr/bin/supervisord -n \
+  -c /etc/supervisor/conf.d/all.conf</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────────────── SLIDE 13: 总结 ─────────────────────────────── -->
+  <div class="slide title-slide">
+    <div class="label">总结</div>
+    <h2 style="margin-bottom:28px">每一代解决了什么问题</h2>
+    <div class="grid3" style="max-width:900px;align-items:stretch">
+      <div class="card" style="border-top:3px solid var(--warn);text-align:center">
+        <div class="v1" style="margin-bottom:10px">v1</div>
+        <h3 style="margin-bottom:8px">从零到有</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7">三容器验证可行性，跑通 CI→Grafana 全链路</p>
+        <div style="margin-top:14px;font-size:12px;color:var(--warn)">痛点：部署复杂、CSV 脆弱</div>
+      </div>
+      <div class="card" style="border-top:3px solid var(--accent2);text-align:center">
+        <div class="v2" style="margin-bottom:10px">v2</div>
+        <h3 style="margin-bottom:8px">合并 &amp; 结构化</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7">单容器降低部署门槛，SQLite 替代 CSV，支持完整查询</p>
+        <div style="margin-top:14px;font-size:12px;color:var(--accent2)">痛点：Grafana 太重、无多平台</div>
+      </div>
+      <div class="card" style="border-top:3px solid var(--accent3);text-align:center">
+        <div class="v3" style="margin-bottom:10px">v3</div>
+        <h3 style="margin-bottom:8px">轻量 &amp; 自主</h3>
+        <p class="muted" style="font-size:13px;line-height:1.7">Flask 替换 Grafana，镜像缩减 90%，看板代码化，支持多平台</p>
+        <div style="margin-top:14px;font-size:12px;color:var(--accent3)">目标：当前状态 ✅</div>
+      </div>
+    </div>
+    <div class="card mt" style="max-width:700px;text-align:center;font-size:14px;line-height:1.8">
+      <span style="color:var(--muted)">核心原则：</span>
+      &nbsp;<strong>职责合并降低运维摩擦</strong>&nbsp;·&nbsp;
+      <strong>数据结构化提升可查询性</strong>&nbsp;·&nbsp;
+      <strong>替换重依赖降低迁移成本</strong>
+    </div>
+    <p class="subtitle" style="margin-top:28px">谢谢 🙏</p>
+  </div>
+
+</div><!-- /deck -->
+
+<!-- ── NAV ── -->
+<div class="nav">
+  <button id="prev" title="上一页">&#8592;</button>
+  <div class="dots" id="dots"></div>
+  <button id="next" title="下一页">&#8594;</button>
+  <span class="slide-num" id="slide-num"></span>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dotsEl = document.getElementById('dots');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  const numEl   = document.getElementById('slide-num');
+  const progress = document.getElementById('progress');
+  let cur = 0;
+
+  // build dots
+  slides.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.onclick = () => goTo(i);
+    dotsEl.appendChild(d);
+  });
+
+  function goTo(n) {
+    if (n < 0 || n >= slides.length) return;
+    slides[cur].classList.remove('active');
+    slides[cur].classList.add('exit');
+    setTimeout(() => slides[cur].classList.remove('exit'), 360);
+    cur = n;
+    slides[cur].classList.add('active');
+    document.querySelectorAll('.dot').forEach((d, i) => d.classList.toggle('active', i === cur));
+    prevBtn.disabled = cur === 0;
+    nextBtn.disabled = cur === slides.length - 1;
+    numEl.textContent = `${cur + 1} / ${slides.length}`;
+    progress.style.width = `${((cur + 1) / slides.length) * 100}%`;
+  }
+
+  prevBtn.onclick = () => goTo(cur - 1);
+  nextBtn.onclick = () => goTo(cur + 1);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); goTo(cur + 1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                    { e.preventDefault(); goTo(cur - 1); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End')  goTo(slides.length - 1);
+  });
+
+  // swipe
+  let tx0 = 0;
+  document.addEventListener('touchstart', e => tx0 = e.touches[0].clientX);
+  document.addEventListener('touchend',   e => {
+    const dx = e.changedTouches[0].clientX - tx0;
+    if (Math.abs(dx) > 50) goTo(dx < 0 ? cur + 1 : cur - 1);
+  });
+
+  goTo(0);
+</script>
+</body>
+</html>

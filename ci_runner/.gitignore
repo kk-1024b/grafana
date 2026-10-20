@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+data/
+cache/
+secrets/
+!secrets/.gitkeep
+*.sqlite
+*.sqlite-journal
+.coverage

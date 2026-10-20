@@ -1,0 +1,23 @@
+timezone: Asia/Shanghai
+
+defaults:
+  clone_depth: 1
+  build_timeout_sec: 3600
+  test_timeout_sec: 1800
+  keep_runs: 30
+
+projects:
+  - name: my_cpp_project
+    repo_url: git@gitlab.internal:group/my-project.git
+    branch: main
+    cron: "0 0 * * *"
+    workdir: ""
+    build_cmd: |
+      mkdir -p build && cd build
+      cmake -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache ..
+      make -j$(nproc)
+    test_cmd: |
+      cd build && ctest --output-on-failure
+    env:
+      CCACHE_DIR: /cache/ccache

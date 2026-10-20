@@ -1,0 +1,17 @@
+services:
+  ci_runner:
+    build:
+      context: .
+      args:
+        GITLAB_HOST: gitlab.internal
+    container_name: ci_runner
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+      - ./cache/ccache:/cache/ccache
+      - ./config:/app/config:ro
+      - ./secrets/id_rsa:/root/.ssh/id_rsa:ro
